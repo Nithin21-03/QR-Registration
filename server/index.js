@@ -1,0 +1,207 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import {
+  initDatabase,
+  verifyPass,
+  processScan,
+  undoScan,
+  getStats,
+  getAttendees,
+  generateAttendanceCsv,
+  seedSampleData,
+} from './db.js';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 5001;
+
+// Middlewares
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Security Headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.removeHeader('X-Powered-By');
+  next();
+});
+
+// Initialize Database connection on boot
+let dbReady = false;
+initDatabase()
+  .then((ready) => {
+    dbReady = ready;
+    console.log(`[DB] Engine initialized: ${ready ? 'Supabase Cloud PostgreSQL' : 'Resilient In-Memory Storage'}`);
+  })
+  .catch((err) => {
+    console.warn('[DB] Startup notice:', err.message);
+  });
+
+// -------------------------------------------------------------
+// API ROUTES
+// -------------------------------------------------------------
+
+// 1. Health & Connection Diagnostic
+app.get('/api/health', async (req, res) => {
+  try {
+    const stats = await getStats();
+    res.json({
+      status: 'ONLINE',
+      system: 'ZYNTRA 2026 Standalone Pass & Food Scanner Engine',
+      database: stats.database,
+      totalAttendees: stats.overview.totalRegistered,
+      totalCheckedIn: stats.overview.totalCheckedIn,
+      totalFoodClaimed: stats.overview.totalFoodClaimed,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'ERROR', error: err.message });
+  }
+});
+
+// 2. Real-time Attendance & Food Analytics
+app.get('/api/stats', async (req, res) => {
+  try {
+    const stats = await getStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Attendee Directory with Search & Filters
+app.get('/api/attendees', async (req, res) => {
+  try {
+    const { search = '', status = 'ALL', eventId = 'ALL', limit = 200 } = req.query;
+    const list = await getAttendees({
+      search,
+      status,
+      eventId,
+      limit: parseInt(limit, 10) || 200,
+    });
+    res.json({ count: list.length, attendees: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Quick Verify Pass without Modifying Status
+app.get('/api/verify/:ticketId', async (req, res) => {
+  try {
+    const attendee = await verifyPass(req.params.ticketId);
+    if (!attendee) {
+      return res.status(404).json({
+        found: false,
+        message: 'Pass not registered or invalid ticket ID',
+      });
+    }
+    res.json({ found: true, attendee });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Execute Scan (Gate Check-In OR Food Collection)
+app.post('/api/scan', async (req, res) => {
+  try {
+    const {
+      ticketInput,
+      scanType = 'MAIN_ENTRANCE',
+      station = 'Gate 1',
+      volunteer = 'Volunteer',
+      forceOverride = false,
+    } = req.body;
+
+    if (!ticketInput) {
+      return res.status(400).json({ success: false, message: 'Ticket ID or QR data payload is required' });
+    }
+
+    const result = await processScan({
+      ticketInput,
+      scanType,
+      station,
+      volunteer,
+      forceOverride: Boolean(forceOverride),
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Scan error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 6. Undo Scan (Revert check-in or food claim)
+app.post('/api/undo-scan', async (req, res) => {
+  try {
+    const { ticketId, scanType } = req.body;
+    if (!ticketId || !scanType) {
+      return res.status(400).json({ success: false, message: 'Ticket ID and scanType are required' });
+    }
+
+    const result = await undoScan({ ticketId, scanType });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 7. Seed Demo Zyntra Attendees
+app.post('/api/seed', async (req, res) => {
+  try {
+    const result = await seedSampleData();
+    res.json({
+      success: true,
+      message: 'Sample Zyntra \'26 passes seeded successfully into registry.',
+      details: result,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 8. Export Attendance CSV
+app.get('/api/export', async (req, res) => {
+  try {
+    const csvData = await generateAttendanceCsv();
+    const filename = `zyntra2026_attendance_${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvData);
+  } catch (err) {
+    res.status(500).send(`Error generating CSV: ${err.message}`);
+  }
+});
+
+// Serve frontend in production build if dist directory exists
+const distDir = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
+
+// Start Server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+  ======================================================
+  ⚡ ZYNTRA '26 PASS & FOOD SCANNER SERVER
+  ======================================================
+  🛰️  Local Port:      http://localhost:${PORT}
+  📡  API Health:      http://localhost:${PORT}/api/health
+  📊  Live Analytics:  http://localhost:${PORT}/api/stats
+  📇  Database:        Supabase PostgreSQL
+  ======================================================
+  `);
+});
