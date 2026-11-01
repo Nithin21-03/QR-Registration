@@ -14,5 +14,15 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 5174,
+    host: true, // Listen on all network addresses for mobile preview
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 });
-
