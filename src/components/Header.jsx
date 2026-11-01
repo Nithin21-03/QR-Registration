@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ShieldCheck,
   Volume2,
   VolumeX,
   Vibrate,
-  Radio,
   Sparkles,
-  Database,
-  Building,
+  MapPin,
   User,
 } from 'lucide-react';
 import { sound } from '../utils/audioSynth';
@@ -42,88 +40,109 @@ export default function Header({
 
   return (
     <header className="top-header glass">
-      {/* Brand Section */}
-      <div className="brand-section">
-        <div className="brand-logo-crest">
-          <ShieldCheck size={24} />
+      {/* Top Row: Brand & Quick Action Controls */}
+      <div className="header-primary-row">
+        {/* Brand Section */}
+        <div className="brand-section">
+          <div className="brand-logo-crest">
+            <ShieldCheck size={22} />
+          </div>
+          <div className="brand-text">
+            <h1>
+              ZYNTRA <span>’26</span>
+            </h1>
+            <div className="brand-sub">PASS SCANNER</div>
+          </div>
         </div>
-        <div className="brand-text">
-          <h1>
-            ZYNTRA <span>’26</span>
-          </h1>
-          <div className="brand-sub">PASS & MEAL SCANNER</div>
+
+        {/* Quick System Controls (Audio, Haptic, Cloud status) */}
+        <div className="header-quick-actions">
+          {/* Supabase Status Indicator */}
+          <div
+            className={`status-indicator ${isConnected ? 'connected' : 'local'}`}
+            title={isConnected ? 'Connected to Supabase PostgreSQL' : 'Operating in Local Storage Cache'}
+          >
+            <div className="status-dot" />
+            <span className="status-label-desktop">
+              {isConnected ? 'Supabase Live' : 'Local Cache'}
+            </span>
+          </div>
+
+          {/* Audio Toggle */}
+          <button
+            type="button"
+            className={`icon-btn ${!muted ? 'active' : ''}`}
+            onClick={toggleMute}
+            title={muted ? 'Unmute Audio Chimes' : 'Mute Audio Chimes'}
+            aria-label="Toggle Sound"
+          >
+            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          </button>
+
+          {/* Haptics Toggle */}
+          <button
+            type="button"
+            className={`icon-btn ${haptics ? 'active' : ''}`}
+            onClick={toggleHaptics}
+            title={haptics ? 'Disable Vibration Haptics' : 'Enable Vibration Haptics'}
+            aria-label="Toggle Vibration"
+          >
+            <Vibrate size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Controls & Badges */}
-      <div className="header-controls">
-        {/* Supabase Status */}
-        <div className={`status-indicator ${isConnected ? 'connected' : 'local'}`}>
-          <div className="status-dot" />
-          <span>{isConnected ? 'Supabase Cloud' : 'Local Cache Active'}</span>
+      {/* Secondary Row / Station & Volunteer Operator Controls */}
+      <div className="header-station-row">
+        {/* Physical Station / Gate Selector */}
+        <div className="station-select-wrapper">
+          <MapPin size={14} className="station-icon" />
+          <select
+            className="station-select"
+            value={station}
+            onChange={(e) => {
+              sound.playClick();
+              setStation(e.target.value);
+            }}
+            title="Current Scanning Station"
+            aria-label="Scanner Station"
+          >
+            <option value="Gate 1 (Main Entrance)">Gate 1 (Main Entrance)</option>
+            <option value="Gate 2 (Auditorium)">Gate 2 (Auditorium)</option>
+            <option value="Gate 3 (Cyber Labs)">Gate 3 (Cyber Labs)</option>
+            <option value="Food Counter A (Main Quad)">Food Counter A (Main Quad)</option>
+            <option value="Food Counter B (Dining Hall)">Food Counter B (Dining Hall)</option>
+          </select>
         </div>
 
-        {/* Station / Gate Selector */}
-        <select
-          className="station-select"
-          value={station}
-          onChange={(e) => {
-            sound.playClick();
-            setStation(e.target.value);
-          }}
-          title="Select physical scanner location"
-        >
-          <option value="Gate 1 (Main Entrance)">Gate 1 (Main Entrance)</option>
-          <option value="Gate 2 (Auditorium)">Gate 2 (Auditorium)</option>
-          <option value="Gate 3 (Cyber Labs)">Gate 3 (Cyber Labs)</option>
-          <option value="Food Counter A (Main Quad)">Food Counter A (Main Quad)</option>
-          <option value="Food Counter B (Dining Hall)">Food Counter B (Dining Hall)</option>
-        </select>
+        {/* Volunteer Name */}
+        <div className="volunteer-input-wrapper">
+          <User size={14} className="volunteer-icon" />
+          <input
+            type="text"
+            className="volunteer-input"
+            value={volunteer}
+            onChange={(e) => setVolunteer(e.target.value)}
+            placeholder="Operator Name"
+            title="Logged Volunteer Name"
+            aria-label="Volunteer Name"
+          />
+        </div>
 
-        {/* Volunteer Identity */}
-        <input
-          type="text"
-          className="station-select"
-          style={{ width: '130px' }}
-          value={volunteer}
-          onChange={(e) => setVolunteer(e.target.value)}
-          placeholder="Volunteer Name"
-          title="Volunteer Operator Name"
-        />
-
-        {/* Seed Sample Passes (if needed) */}
+        {/* Seed Sample Passes (visible only when 0 attendees loaded) */}
         {health?.totalAttendees === 0 && (
           <button
-            className="btn-secondary"
+            type="button"
+            className="btn-secondary seed-btn"
             onClick={onSeedData}
             disabled={isSeeding}
-            style={{ fontSize: '0.74rem', padding: '6px 12px' }}
             title="Load sample Zyntra passes for testing"
           >
             <Sparkles size={13} className="text-cyan" />
             <span>{isSeeding ? 'Seeding...' : 'Load Demo Passes'}</span>
           </button>
         )}
-
-        {/* Audio Toggle */}
-        <button
-          className={`icon-btn ${!muted ? 'active' : ''}`}
-          onClick={toggleMute}
-          title={muted ? 'Unmute Audio Chimes' : 'Mute Audio Chimes'}
-        >
-          {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
-        </button>
-
-        {/* Haptics Toggle */}
-        <button
-          className={`icon-btn ${haptics ? 'active' : ''}`}
-          onClick={toggleHaptics}
-          title={haptics ? 'Disable Vibration Haptics' : 'Enable Vibration Haptics'}
-        >
-          <Vibrate size={17} />
-        </button>
       </div>
     </header>
   );
 }
-

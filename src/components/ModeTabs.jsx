@@ -6,20 +6,22 @@ export default function ModeTabs({ activeMode, onSelectMode, stats }) {
   const tabs = [
     {
       id: 'MAIN_ENTRANCE',
-      title: 'Entrance Scanner',
-      desc: 'Verify pass & check-in',
+      title: 'Entrance Gate',
+      desc: 'Pass verify & entry',
+      shortTitle: 'Entrance',
       icon: QrCode,
-      badge: stats?.overview?.totalCheckedIn
+      badge: stats?.overview?.totalCheckedIn !== undefined
         ? `${stats.overview.totalCheckedIn} In`
         : null,
       foodMode: false,
     },
     {
       id: 'FOOD_COLLECTION',
-      title: 'Food Collection',
+      title: 'Food Station',
       desc: 'Meal token & duplicate check',
+      shortTitle: 'Food Station',
       icon: Utensils,
-      badge: stats?.overview?.totalFoodClaimed
+      badge: stats?.overview?.totalFoodClaimed !== undefined
         ? `${stats.overview.totalFoodClaimed} Fed`
         : null,
       foodMode: true,
@@ -28,6 +30,7 @@ export default function ModeTabs({ activeMode, onSelectMode, stats }) {
       id: 'ANALYTICS',
       title: 'Live Analytics',
       desc: 'Stats, velocity & charts',
+      shortTitle: 'Analytics',
       icon: BarChart3,
       badge: stats?.overview?.attendanceRate !== undefined
         ? `${stats.overview.attendanceRate}%`
@@ -36,18 +39,19 @@ export default function ModeTabs({ activeMode, onSelectMode, stats }) {
     },
     {
       id: 'ATTENDEES',
-      title: 'Attendee Registry',
+      title: 'Attendees',
       desc: 'Directory, search & CSV',
+      shortTitle: 'Registry',
       icon: Users,
-      badge: stats?.overview?.totalRegistered
-        ? `${stats.overview.totalRegistered} Reg`
+      badge: stats?.overview?.totalRegistered !== undefined
+        ? `${stats.overview.totalRegistered}`
         : null,
       foodMode: false,
     },
   ];
 
   return (
-    <div className="mode-tabs-grid">
+    <nav className="mode-tabs-grid" aria-label="Scanner modes">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeMode === tab.id;
@@ -55,6 +59,7 @@ export default function ModeTabs({ activeMode, onSelectMode, stats }) {
         return (
           <button
             key={tab.id}
+            type="button"
             className={`tab-btn ${isActive ? 'active' : ''} ${
               tab.foodMode && isActive ? 'food-mode' : ''
             }`}
@@ -64,28 +69,14 @@ export default function ModeTabs({ activeMode, onSelectMode, stats }) {
             }}
           >
             <div className="tab-icon">
-              <Icon size={20} />
+              <Icon size={18} />
             </div>
             <div className="tab-text">
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                }}
-              >
-                <span className="tab-title">{tab.title}</span>
+              <div className="tab-title-row">
+                <span className="tab-title-desktop">{tab.title}</span>
+                <span className="tab-title-mobile">{tab.shortTitle}</span>
                 {tab.badge && (
-                  <span
-                    style={{
-                      fontSize: '0.68rem',
-                      fontFamily: 'var(--font-mono)',
-                      background: 'rgba(255, 255, 255, 0.12)',
-                      padding: '2px 6px',
-                      borderRadius: '6px',
-                    }}
-                  >
+                  <span className="tab-count-badge">
                     {tab.badge}
                   </span>
                 )}
@@ -95,7 +86,6 @@ export default function ModeTabs({ activeMode, onSelectMode, stats }) {
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
-

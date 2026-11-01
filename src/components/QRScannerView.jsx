@@ -7,11 +7,9 @@ import {
   Upload,
   Zap,
   ZapOff,
-  AlertCircle,
   Sparkles,
   QrCode,
   ArrowRight,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { sound } from '../utils/audioSynth';
 
@@ -46,23 +44,22 @@ export default function QRScannerView({
 
         if (devices && devices.length > 0) {
           setCameras(devices);
-          // Prefer environment / back camera on mobile
-          const backCam = devices.find((d) =>
-            d.label.toLowerCase().includes('back') ||
-            d.label.toLowerCase().includes('environment') ||
-            d.label.toLowerCase().includes('rear')
-          );
+          // Prefer environment / rear camera on mobile
+          const backCam = devices.find((d) => {
+            const l = d.label.toLowerCase();
+            return l.includes('back') || l.includes('environment') || l.includes('rear');
+          });
           const initialId = backCam ? backCam.id : devices[0].id;
           setSelectedCameraId(initialId);
           startCamera(initialId);
         } else {
-          setCameraError('No camera detected on this device. You can still scan via file upload or manual search.');
+          setCameraError('No camera detected. You can scan via photo upload or manual search.');
         }
       } catch (err) {
-        console.warn('Camera access note:', err.message);
+        console.warn('Camera setup note:', err.message);
         if (isMounted) {
           setCameraError(
-            'Camera access requires permission or HTTPS/localhost. You can use file upload or manual entry.'
+            'Camera access requires permission or HTTPS/localhost. You can use photo upload or manual search.'
           );
         }
       }
@@ -87,9 +84,17 @@ export default function QRScannerView({
       const html5QrCode = new Html5Qrcode('qr-reader-viewport');
       html5QrCodeRef.current = html5QrCode;
 
+      // Responsive QR scan box optimized for all mobile screen dimensions
       const config = {
         fps: 15,
-        qrbox: { width: 250, height: 250 },
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.floor(minEdge * 0.72);
+          return {
+            width: Math.max(180, Math.min(size, 260)),
+            height: Math.max(180, Math.min(size, 260)),
+          };
+        },
         aspectRatio: 1.0,
       };
 
@@ -100,13 +105,13 @@ export default function QRScannerView({
           handleDetectedCode(decodedText);
         },
         () => {
-          // Ignore frame decode misses
+          // Ignore periodic frame decode misses
         }
       );
 
       setScannerActive(true);
 
-      // Check for torch capability
+      // Check for torch / flashlight capability on mobile device
       try {
         const track = html5QrCode.getRunningTrackCameraCapabilities();
         if (track && track.torchFeature().isSupported()) {
@@ -116,7 +121,7 @@ export default function QRScannerView({
         setTorchSupported(false);
       }
     } catch (err) {
-      console.warn('Failed to start camera:', err);
+      console.warn('Camera start error:', err);
       setScannerActive(false);
       setCameraError(
         'Could not access camera feed. Please check browser permissions or use manual entry below.'
@@ -140,7 +145,7 @@ export default function QRScannerView({
     }
   };
 
-  // 4. Handle QR detection
+  // 4. Handle QR detection with debounce
   const handleDetectedCode = async (decodedText) => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -148,7 +153,7 @@ export default function QRScannerView({
     try {
       await onScanResult(decodedText);
     } finally {
-      // Short 1.5s debounce before next scan to prevent duplicate camera firing
+      // 1.5s debounce before next scan to prevent duplicate camera firing
       setTimeout(() => {
         setIsProcessing(false);
       }, 1500);
@@ -194,7 +199,7 @@ export default function QRScannerView({
       handleDetectedCode(decodedResult);
     } catch (err) {
       sound.playError();
-      alert('Could not decode a valid QR code from this image. Please ensure the QR is clear and well-lit.');
+      alert('Could not decode a valid QR code from this photo. Please ensure the QR code is clear and not blurry.');
     } finally {
       e.target.value = '';
     }
@@ -216,18 +221,18 @@ export default function QRScannerView({
         <div className="viewport-badge">
           <QrCode size={16} className={isFoodMode ? 'text-amber' : 'text-cyan'} />
           <span>
-            {isFoodMode
-              ? 'Food Counter Scan · Single-Meal Token'
-              : 'Entrance Gate Scan · Ticket Verification'}
+            {isFoodMode ? 'Food Station Scan · Meal Token' : 'Entrance Gate Scan · Ticket Verification'}
           </span>
         </div>
 
         <div className="camera-actions">
           {torchSupported && (
             <button
+              type="button"
               className={`icon-btn ${torchOn ? 'active' : ''}`}
               onClick={toggleTorch}
               title="Toggle Flashlight Torch"
+              aria-label="Flashlight Torch"
             >
               {torchOn ? <Zap size={16} /> : <ZapOff size={16} />}
             </button>
@@ -235,18 +240,22 @@ export default function QRScannerView({
 
           {cameras.length > 1 && (
             <button
+              type="button"
               className="icon-btn"
               onClick={handleSwitchCamera}
               title="Switch Camera (Front/Rear)"
+              aria-label="Flip Camera"
             >
               <RefreshCw size={16} />
             </button>
           )}
 
           <button
+            type="button"
             className="icon-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Scan QR from photo / screenshot"
+            title="Scan QR from gallery photo or screenshot"
+            aria-label="Upload Photo"
           >
             <Upload size={16} />
           </button>
@@ -274,27 +283,19 @@ export default function QRScannerView({
 
         {/* Fallback Notice if Camera fails or pending */}
         {!scannerActive && (
-          <div
-            style={{
-              padding: '24px',
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '12px',
-              maxWidth: '380px',
-            }}
-          >
+          <div className="camera-fallback-msg">
             <Camera size={44} style={{ opacity: 0.4, color: 'var(--cyan)' }} />
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>
               {cameraError || 'Initializing Camera Feed...'}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'rgba(228, 244, 255, 0.6)' }}>
-              If camera access is blocked, use the <strong>Upload Photo</strong> button or search via <strong>Ticket ID</strong> below.
+            <div style={{ fontSize: '0.75rem', color: 'rgba(228, 244, 255, 0.6)', lineHeight: 1.4 }}>
+              If camera access is blocked, tap <strong>Upload Photo</strong> above or type the <strong>Pass ID</strong> below.
             </div>
             {cameras.length > 0 && !scannerActive && (
               <button
+                type="button"
                 className="btn-primary"
+                style={{ marginTop: '4px' }}
                 onClick={() => startCamera(selectedCameraId || cameras[0].id)}
               >
                 Retry Camera
@@ -314,35 +315,29 @@ export default function QRScannerView({
               className="manual-input"
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value)}
-              placeholder="Type Pass ID (e.g. ZY-4821-B7E2), USN, Email, or Name..."
+              placeholder="Pass ID (ZY-...), USN, or Name..."
+              aria-label="Search or enter Pass ID"
             />
           </div>
-          <button type="submit" className="btn-primary" disabled={!manualInput.trim()}>
+          <button
+            type="submit"
+            className="btn-primary manual-verify-btn"
+            disabled={!manualInput.trim()}
+          >
             <span>Verify</span>
             <ArrowRight size={15} />
           </button>
         </form>
 
-        {/* Quick Clickable Test Passes Drawer for instant zero-hassle testing */}
+        {/* Quick Clickable Test Passes Drawer for instant mobile testing */}
         {samplePasses.length > 0 && (
-          <div style={{ marginTop: '8px' }}>
-            <div
-              style={{
-                fontSize: '0.72rem',
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                color: 'rgba(228, 244, 255, 0.5)',
-                marginBottom: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
+          <div className="test-passes-wrapper">
+            <div className="test-passes-label">
               <Sparkles size={12} className="text-cyan" />
-              <span>One-Click Test Passes (Simulate QR Scan):</span>
+              <span>Tap Sample Pass to Simulate Scan:</span>
             </div>
             <div className="test-passes-bar">
-              {samplePasses.slice(0, 7).map((pass) => (
+              {samplePasses.slice(0, 8).map((pass) => (
                 <button
                   key={pass.ticket_id}
                   type="button"
@@ -353,12 +348,8 @@ export default function QRScannerView({
                   }}
                   title={`Test scan for ${pass.full_name} (${pass.event_name})`}
                 >
-                  <span style={{ color: '#fff', fontWeight: 'bold' }}>
-                    {pass.ticket_id}
-                  </span>
-                  <span style={{ color: 'rgba(228, 244, 255, 0.6)' }}>
-                    · {pass.full_name.split(' ')[0]}
-                  </span>
+                  <span className="pill-id">{pass.ticket_id}</span>
+                  <span className="pill-name">· {pass.full_name.split(' ')[0]}</span>
                 </button>
               ))}
             </div>
@@ -368,4 +359,3 @@ export default function QRScannerView({
     </div>
   );
 }
-
