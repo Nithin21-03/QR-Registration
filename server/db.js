@@ -172,33 +172,46 @@ async function refreshLocalCache(client) {
  */
 export function sanitizeTicketInput(input) {
   if (!input) return '';
-  const str = String(input).trim();
+  let str = String(input).trim();
 
   // 1. Check if input is a JSON string from ticket payload
-  if (str.startsWith('{') && str.endsWith('}')) {
+  if ((str.startsWith('{') && str.endsWith('}')) || (str.startsWith('[') && str.endsWith(']'))) {
     try {
       const parsed = JSON.parse(str);
-      if (parsed.id) return String(parsed.id).trim();
-      if (parsed.ticket_id) return String(parsed.ticket_id).trim();
-      if (parsed.ticketId) return String(parsed.ticketId).trim();
+      const target = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (target?.ticket_id) return String(target.ticket_id).toUpperCase().trim();
+      if (target?.id) return String(target.id).toUpperCase().trim();
+      if (target?.ticketId) return String(target.ticketId).toUpperCase().trim();
+      if (target?.passId) return String(target.passId).toUpperCase().trim();
     } catch (_) {}
   }
 
-  // 2. Check if input is a URL (e.g. https://zyntra.tech/pass/ZY-4821-B7E2)
-  if (str.includes('/pass/')) {
-    const parts = str.split('/pass/');
-    if (parts[1]) return parts[1].split('?')[0].split('#')[0].trim();
-  }
-  if (str.includes('?ticket=') || str.includes('&ticket=')) {
-    const match = str.match(/[?&]ticket=([^&#]+)/);
-    if (match && match[1]) return decodeURIComponent(match[1]).trim();
-  }
-  if (str.includes('?id=') || str.includes('&id=')) {
-    const match = str.match(/[?&]id=([^&#]+)/);
-    if (match && match[1]) return decodeURIComponent(match[1]).trim();
+  // 2. Check for URL query params: id, ticket, pass, ticket_id
+  if (str.includes('?') || str.includes('&')) {
+    const match = str.match(/[?&](?:ticket|id|pass|ticket_id)=([^&#]+)/i);
+    if (match && match[1]) {
+      const extracted = decodeURIComponent(match[1]).trim();
+      if (extracted) return sanitizeTicketInput(extracted);
+    }
   }
 
-  // 3. Raw Ticket ID string
+  // 3. Check for URL path patterns: /pass/ZY-..., /ticket/ZY-..., /verify/ZY-...
+  const pathMatch = str.match(/\/(?:pass|ticket|verify|attendee)\/(ZY-[A-Z0-9_-]+)/i);
+  if (pathMatch && pathMatch[1]) {
+    const extracted = decodeURIComponent(pathMatch[1]).trim();
+    if (extracted) return sanitizeTicketInput(extracted);
+  }
+
+  // 4. Extract standard Zyntra Pass pattern anywhere in text: ZY-XXXX-XXXX
+  const zyRegex = /\b(ZY-[A-Z0-9]{3,8}-[A-Z0-9]{3,8})\b/i;
+  const zyMatch = str.match(zyRegex);
+  if (zyMatch && zyMatch[1]) {
+    return zyMatch[1].toUpperCase().trim();
+  }
+
+  // 5. Strip common text prefixes (e.g. "PASS: ", "TICKET ID: ", "OFFICIAL QR GATE PASS")
+  str = str.replace(/^(?:OFFICIAL\s+QR\s+GATE\s+PASS\s+|PASS\s*(?:ID)?\s*[:\-]\s*|TICKET\s*(?:ID)?\s*[:\-]\s*)/i, '').trim();
+
   return str;
 }
 
@@ -314,7 +327,9 @@ export async function processScan({ ticketInput, scanType = 'MAIN_ENTRANCE', sta
           `UPDATE registrations 
            SET checked_in = TRUE, 
                checked_in_at = NOW(), 
-               checked_in_by = $1 
+               checked_in_by = $1,
+               check_in_status = 'CHECKED_IN',
+               check_in_time = NOW()
            WHERE id = $2`,
           [attendee.checked_in_by, attendee.id]
         );
@@ -466,7 +481,7 @@ export async function undoScan({ ticketId, scanType }) {
       try {
         await pool.query(
           `UPDATE registrations 
-           SET checked_in = FALSE, checked_in_at = NULL, checked_in_by = NULL 
+           SET checked_in = FALSE, checked_in_at = NULL, checked_in_by = NULL, check_in_status = 'PENDING', check_in_time = NULL
            WHERE id = $1`,
           [attendee.id]
         );

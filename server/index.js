@@ -14,6 +14,13 @@ import {
   generateAttendanceCsv,
   seedSampleData,
 } from './db.js';
+import {
+  applySecurityHeaders,
+  rateLimiter,
+  requireVolunteerAuth,
+  sanitizeScanRequest,
+  handleVerifyPasscode,
+} from './security.js';
 
 dotenv.config();
 
@@ -23,18 +30,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Middlewares
+// 1. Cyber Security Headers & Proxy Configuration
+applySecurityHeaders(app);
+
+// 2. Body Parsing & CORS
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Security Headers
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.removeHeader('X-Powered-By');
-  next();
-});
+// 3. Strict SQL & Script Injection Defense
+app.use(sanitizeScanRequest);
 
 // Initialize Database connection on boot
 let dbReady = false;
@@ -51,7 +56,14 @@ initDatabase()
 // API ROUTES
 // -------------------------------------------------------------
 
-// 1. Health & Connection Diagnostic
+// 0. Volunteer Authentication & Security Token Issuance
+app.post(
+  '/api/auth/verify-passcode',
+  rateLimiter({ maxRequests: 10, windowMs: 60000, message: 'Too many authentication attempts.' }),
+  handleVerifyPasscode
+);
+
+// 1. Health & Connection Diagnostic (Public for ping & latency status)
 app.get('/api/health', async (req, res) => {
   try {
     const stats = await getStats();
@@ -62,6 +74,11 @@ app.get('/api/health', async (req, res) => {
       totalAttendees: stats.overview.totalRegistered,
       totalCheckedIn: stats.overview.totalCheckedIn,
       totalFoodClaimed: stats.overview.totalFoodClaimed,
+      security: {
+        antiTamper: 'ACTIVE',
+        rateLimiting: 'ACTIVE',
+        ssl: true,
+      },
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
@@ -79,15 +96,15 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// 3. Attendee Directory with Search & Filters
-app.get('/api/attendees', async (req, res) => {
+// 3. Attendee Directory with Search & Filters (Secured)
+app.get('/api/attendees', requireVolunteerAuth, async (req, res) => {
   try {
-    const { search = '', status = 'ALL', eventId = 'ALL', limit = 200 } = req.query;
+    const { search = '', status = 'ALL', eventId = 'ALL', limit = 500 } = req.query;
     const list = await getAttendees({
       search,
       status,
       eventId,
-      limit: parseInt(limit, 10) || 200,
+      limit: parseInt(limit, 10) || 500,
     });
     res.json({ count: list.length, attendees: list });
   } catch (err) {
@@ -95,8 +112,8 @@ app.get('/api/attendees', async (req, res) => {
   }
 });
 
-// 4. Quick Verify Pass without Modifying Status
-app.get('/api/verify/:ticketId', async (req, res) => {
+// 4. Quick Verify Pass without Modifying Status (Secured)
+app.get('/api/verify/:ticketId', requireVolunteerAuth, async (req, res) => {
   try {
     const attendee = await verifyPass(req.params.ticketId);
     if (!attendee) {
@@ -111,38 +128,43 @@ app.get('/api/verify/:ticketId', async (req, res) => {
   }
 });
 
-// 5. Execute Scan (Gate Check-In OR Food Collection)
-app.post('/api/scan', async (req, res) => {
-  try {
-    const {
-      ticketInput,
-      scanType = 'MAIN_ENTRANCE',
-      station = 'Gate 1',
-      volunteer = 'Volunteer',
-      forceOverride = false,
-    } = req.body;
+// 5. Execute Scan (Gate Check-In OR Food Collection - Auth & Rate-Protected)
+app.post(
+  '/api/scan',
+  requireVolunteerAuth,
+  rateLimiter({ maxRequests: 90, windowMs: 60000, message: 'High scanning velocity limit reached. Please pause 2 seconds.' }),
+  async (req, res) => {
+    try {
+      const {
+        ticketInput,
+        scanType = 'MAIN_ENTRANCE',
+        station = 'Gate 1',
+        volunteer = 'Volunteer',
+        forceOverride = false,
+      } = req.body;
 
-    if (!ticketInput) {
-      return res.status(400).json({ success: false, message: 'Ticket ID or QR data payload is required' });
+      if (!ticketInput) {
+        return res.status(400).json({ success: false, message: 'Ticket ID or QR data payload is required' });
+      }
+
+      const result = await processScan({
+        ticketInput,
+        scanType,
+        station,
+        volunteer,
+        forceOverride: Boolean(forceOverride),
+      });
+
+      res.json(result);
+    } catch (err) {
+      console.error('Scan error:', err);
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    const result = await processScan({
-      ticketInput,
-      scanType,
-      station,
-      volunteer,
-      forceOverride: Boolean(forceOverride),
-    });
-
-    res.json(result);
-  } catch (err) {
-    console.error('Scan error:', err);
-    res.status(500).json({ success: false, message: err.message });
   }
-});
+);
 
-// 6. Undo Scan (Revert check-in or food claim)
-app.post('/api/undo-scan', async (req, res) => {
+// 6. Undo Scan (Revert check-in or food claim - Secured)
+app.post('/api/undo-scan', requireVolunteerAuth, async (req, res) => {
   try {
     const { ticketId, scanType } = req.body;
     if (!ticketId || !scanType) {
@@ -156,8 +178,8 @@ app.post('/api/undo-scan', async (req, res) => {
   }
 });
 
-// 7. Seed Demo Zyntra Attendees
-app.post('/api/seed', async (req, res) => {
+// 7. Seed Demo Zyntra Attendees (Secured)
+app.post('/api/seed', requireVolunteerAuth, async (req, res) => {
   try {
     const result = await seedSampleData();
     res.json({
@@ -170,8 +192,8 @@ app.post('/api/seed', async (req, res) => {
   }
 });
 
-// 8. Export Attendance CSV
-app.get('/api/export', async (req, res) => {
+// 8. Export Attendance CSV (Secured)
+app.get('/api/export', requireVolunteerAuth, async (req, res) => {
   try {
     const csvData = await generateAttendanceCsv();
     const filename = `zyntra2026_attendance_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -192,16 +214,17 @@ if (fs.existsSync(distDir)) {
   });
 }
 
-// Start Server
+// Start Server explicitly on 0.0.0.0
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
   ======================================================
   ⚡ ZYNTRA '26 PASS & FOOD SCANNER SERVER
   ======================================================
-  🛰️  Local Port:      http://localhost:${PORT}
+  🛰️  Local Port:      http://0.0.0.0:${PORT}
   📡  API Health:      http://localhost:${PORT}/api/health
   📊  Live Analytics:  http://localhost:${PORT}/api/stats
   📇  Database:        Supabase PostgreSQL
+  🔒  Security Gate:   HMAC Token & Rate Limiting ACTIVE
   ======================================================
   `);
 });

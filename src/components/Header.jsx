@@ -7,6 +7,7 @@ import {
   Sparkles,
   MapPin,
   User,
+  Lock,
 } from 'lucide-react';
 import { sound } from '../utils/audioSynth';
 
@@ -18,6 +19,7 @@ export default function Header({
   health,
   onSeedData,
   isSeeding,
+  onLockTerminal,
 }) {
   const [muted, setMuted] = useState(false);
   const [haptics, setHaptics] = useState(true);
@@ -55,12 +57,12 @@ export default function Header({
           </div>
         </div>
 
-        {/* Quick System Controls (Audio, Haptic, Cloud status) */}
+        {/* Quick System Controls (Audio, Haptic, Cloud status, Terminal Lock) */}
         <div className="header-quick-actions">
           {/* Supabase Status Indicator */}
           <div
             className={`status-indicator ${isConnected ? 'connected' : 'local'}`}
-            title={isConnected ? 'Connected to Supabase PostgreSQL' : 'Operating in Local Storage Cache'}
+            title={isConnected ? 'Connected to Supabase PostgreSQL (Live Sync · 3.5s)' : 'Operating in Local Resilient Cache'}
           >
             <div className="status-dot" />
             <span className="status-label-desktop">
@@ -89,6 +91,22 @@ export default function Header({
           >
             <Vibrate size={16} />
           </button>
+
+          {/* Terminal Lock Button */}
+          {onLockTerminal && (
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => {
+                sound.playClick();
+                onLockTerminal();
+              }}
+              title="Lock Scanner Terminal (Require Passcode)"
+              aria-label="Lock Terminal"
+            >
+              <Lock size={16} />
+            </button>
+          )}
         </div>
       </div>
 

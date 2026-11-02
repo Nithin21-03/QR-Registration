@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import ModeTabs from './components/ModeTabs';
 import QRScannerView from './components/QRScannerView';
@@ -6,6 +6,7 @@ import ScanResultModal from './components/ScanResultModal';
 import StatsDashboard from './components/StatsDashboard';
 import AttendeeDirectory from './components/AttendeeDirectory';
 import PassCardModal from './components/PassCardModal';
+import SecurityGateModal from './components/SecurityGateModal';
 import { sound } from './utils/audioSynth';
 import {
   processClientScan,
@@ -15,7 +16,7 @@ import {
   loadClientScans,
   saveClientAttendees,
 } from './utils/clientScanner';
-import { History } from 'lucide-react';
+import { History, Clock, CheckCircle2, AlertTriangle, Utensils, XCircle } from 'lucide-react';
 
 export default function App() {
   const [activeMode, setActiveMode] = useState('MAIN_ENTRANCE');
@@ -26,12 +27,17 @@ export default function App() {
     return localStorage.getItem('zyntra_volunteer') || 'Volunteer';
   });
 
+  // Security & Authentication Gatekeeper
+  const [authToken, setAuthToken] = useState(() => sessionStorage.getItem('zyntra_auth_token'));
+  const [authPasscode, setAuthPasscode] = useState(() => sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026');
+  const [isLocked, setIsLocked] = useState(() => !sessionStorage.getItem('zyntra_auth_token'));
+
   // Data states - Initialize with resilient client fallback cache
   const [stats, setStats] = useState(() => getClientStats());
   const [attendees, setAttendees] = useState(() => loadClientAttendees());
   const [health, setHealth] = useState({
     status: 'READY',
-    database: { connected: false, mode: 'Resilient Offline Engine' },
+    database: { connected: false, mode: 'Resilient Cloud Engine' },
     totalAttendees: loadClientAttendees().length,
   });
   const [isSeeding, setIsSeeding] = useState(false);
@@ -52,22 +58,27 @@ export default function App() {
     localStorage.setItem('zyntra_volunteer', volunteer);
   }, [volunteer]);
 
-  // Initial load & periodic background sync (every 15s)
-  useEffect(() => {
-    fetchInitialData();
-    const interval = setInterval(fetchInitialData, 15000);
-    return () => clearInterval(interval);
-  }, []);
+  // Auth Header Builder
+  const getAuthHeaders = useCallback(() => {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = authToken || sessionStorage.getItem('zyntra_auth_token');
+    const code = authPasscode || sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026';
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (code) headers['X-Scanner-Passcode'] = code;
+    return headers;
+  }, [authToken, authPasscode]);
 
-  const fetchInitialData = async () => {
+  // Fetch initial data & periodic cloud sync (every 3.5s for real-time multi-device sync)
+  const fetchInitialData = useCallback(async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const headers = getAuthHeaders();
 
       const [hRes, sRes, aRes] = await Promise.all([
         fetch('/api/health', { signal: controller.signal }).catch(() => null),
         fetch('/api/stats', { signal: controller.signal }).catch(() => null),
-        fetch('/api/attendees?limit=500', { signal: controller.signal }).catch(() => null),
+        fetch('/api/attendees?limit=500', { headers, signal: controller.signal }).catch(() => null),
       ]);
       clearTimeout(timeoutId);
 
@@ -90,15 +101,14 @@ export default function App() {
         serverOnline = true;
       }
 
-      // If backend server was unreachable (e.g. mobile standalone or preview),
-      // update state from client-side fallback storage
+      // If backend server was unreachable, update state from resilient client fallback storage
       if (!serverOnline) {
         const localStats = getClientStats();
         setStats(localStats);
         setAttendees(loadClientAttendees());
         setHealth({
           status: 'ONLINE',
-          database: { connected: false, mode: 'Local Cache Engine' },
+          database: { connected: false, mode: 'Local Resilient Cache' },
           totalAttendees: localStats.overview.totalRegistered,
         });
       }
@@ -108,7 +118,14 @@ export default function App() {
       setStats(localStats);
       setAttendees(loadClientAttendees());
     }
-  };
+  }, [getAuthHeaders]);
+
+  // Initial load & real-time background sync interval (3.5s)
+  useEffect(() => {
+    fetchInitialData();
+    const interval = setInterval(fetchInitialData, 3500);
+    return () => clearInterval(interval);
+  }, [fetchInitialData]);
 
   const showToast = (msg, type = 'info') => {
     setToastMessage({ msg, type });
@@ -140,11 +157,11 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
       const res = await fetch('/api/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           ticketInput,
           scanType: activeMode === 'FOOD_COLLECTION' ? 'FOOD_COLLECTION' : 'MAIN_ENTRANCE',
@@ -159,6 +176,7 @@ export default function App() {
         const data = await res.json();
         applyScanResult(data);
         serverHandled = true;
+        // Immediate cloud refresh for real-time sync across gates
         fetchInitialData();
       }
     } catch (_) {
@@ -190,11 +208,11 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
       const res = await fetch('/api/undo-scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           ticketId,
           scanType: activeMode === 'FOOD_COLLECTION' ? 'FOOD_COLLECTION' : 'MAIN_ENTRANCE',
@@ -239,11 +257,11 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
       const res = await fetch('/api/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           ticketInput: ticketId,
           scanType,
@@ -284,7 +302,10 @@ export default function App() {
     let serverHandled = false;
 
     try {
-      const res = await fetch('/api/seed', { method: 'POST' });
+      const res = await fetch('/api/seed', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -313,7 +334,9 @@ export default function App() {
     setIsExporting(true);
     sound.playClick();
     try {
-      const res = await fetch('/api/export');
+      const res = await fetch('/api/export', {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -373,6 +396,12 @@ export default function App() {
         health={health}
         onSeedData={handleSeed}
         isSeeding={isSeeding}
+        onLockTerminal={() => {
+          sessionStorage.removeItem('zyntra_auth_token');
+          setAuthToken(null);
+          setIsLocked(true);
+          showToast('Scanner terminal locked.', 'info');
+        }}
       />
 
       {/* Mode Navigation Tabs */}
@@ -418,65 +447,57 @@ export default function App() {
                 {recentScans.length === 0 ? (
                   <div
                     style={{
+                      padding: '40px 20px',
                       textAlign: 'center',
-                      padding: '40px 14px',
-                      color: 'rgba(228, 244, 255, 0.45)',
-                      fontSize: '0.84rem',
+                      color: 'rgba(228, 244, 255, 0.4)',
+                      fontSize: '0.85rem',
                     }}
                   >
                     No scan activity recorded yet. Scan passes or click a demo pass to test.
                   </div>
                 ) : (
-                  recentScans.map((scan, idx) => {
-                    const isValid = scan.result === 'VALID';
-                    const isDup = scan.result === 'DUPLICATE' || scan.result === 'DUPLICATE_FOOD';
-                    const isFood = scan.result === 'FOOD_CLAIMED';
+                  recentScans.map((scan, i) => (
+                    <div
+                      key={scan.id || `${scan.ticket_id}-${scan.scanned_at}-${i}`}
+                      className={`feed-item ${scan.result}`}
+                    >
+                      <div className="feed-item-icon">
+                        {scan.result === 'VALID' && (
+                          <CheckCircle2 size={16} className="text-emerald" />
+                        )}
+                        {scan.result === 'DUPLICATE' && (
+                          <AlertTriangle size={16} className="text-amber" />
+                        )}
+                        {scan.result === 'FOOD_CLAIMED' && (
+                          <Utensils size={16} className="text-cyan" />
+                        )}
+                        {scan.result === 'DUPLICATE_FOOD' && (
+                          <AlertTriangle size={16} className="text-amber" />
+                        )}
+                        {scan.result === 'INVALID' && (
+                          <XCircle size={16} className="text-red" />
+                        )}
+                      </div>
 
-                    return (
-                      <div key={idx} className="feed-item">
-                        <div className="feed-item-left">
-                          <div
-                            className={`feed-status-dot ${
-                              isValid ? 'valid' : isDup ? 'duplicate' : isFood ? 'food' : 'invalid'
-                            }`}
-                          />
-                          <div className="feed-item-info">
-                            <span className="feed-item-name">
-                              {scan.ticket_id}
-                            </span>
-                            <span className="feed-item-sub">
-                              {scan.scan_type === 'MAIN_ENTRANCE' ? 'Gate Entry' : 'Meal Token'} ·{' '}
-                              {scan.scanner_station || 'Gate 1'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="feed-item-time">
-                          <span
-                            className={`badge ${
-                              isValid
-                                ? 'badge-green'
-                                : isDup
-                                ? 'badge-yellow'
-                                : isFood
-                                ? 'badge-blue'
-                                : 'badge-gray'
-                            }`}
-                            style={{ fontSize: '0.64rem', padding: '2px 8px' }}
-                          >
-                            {scan.result}
-                          </span>
-                          <div style={{ marginTop: '2px' }}>
-                            {new Date(scan.scanned_at).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                            })}
-                          </div>
+                      <div className="feed-item-info">
+                        <div className="feed-item-ticket">{scan.ticket_id}</div>
+                        <div className="feed-item-meta">
+                          <span>{scan.scanner_station || 'Gate 1'}</span>
+                          <span>•</span>
+                          <span>{scan.scan_type === 'FOOD_COLLECTION' ? 'Meal' : 'Gate'}</span>
                         </div>
                       </div>
-                    );
-                  })
+
+                      <div className="feed-item-time">
+                        <Clock size={11} style={{ marginRight: '3px' }} />
+                        {new Date(scan.scanned_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
@@ -523,6 +544,20 @@ export default function App() {
         attendee={viewingPassAttendee}
         onClose={() => setViewingPassAttendee(null)}
       />
+
+      {/* MODAL 3: Volunteer Gate Security Modal */}
+      {isLocked && (
+        <SecurityGateModal
+          onAuthenticated={(token, code) => {
+            setAuthToken(token);
+            setAuthPasscode(code);
+            setIsLocked(false);
+            showToast('Security clearance verified. Scanner terminal active.', 'success');
+            fetchInitialData();
+          }}
+          isLocked={isLocked}
+        />
+      )}
 
       {/* Global Toast Notification */}
       {toastMessage && (
