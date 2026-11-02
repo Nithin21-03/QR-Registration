@@ -40,16 +40,34 @@ app.use(express.urlencoded({ extended: true }));
 // 3. Strict SQL & Script Injection Defense
 app.use(sanitizeScanRequest);
 
-// Initialize Database connection on boot
+// Initialize Database connection on boot & ensure readiness for serverless cold-starts
 let dbReady = false;
-initDatabase()
-  .then((ready) => {
-    dbReady = ready;
-    console.log(`[DB] Engine initialized: ${ready ? 'Supabase Cloud PostgreSQL' : 'Resilient In-Memory Storage'}`);
-  })
-  .catch((err) => {
-    console.warn('[DB] Startup notice:', err.message);
-  });
+let dbInitPromise = null;
+
+function ensureDbReady() {
+  if (!dbInitPromise) {
+    dbInitPromise = initDatabase()
+      .then((ready) => {
+        dbReady = ready;
+        console.log(`[DB] Engine initialized: ${ready ? 'Supabase Cloud PostgreSQL' : 'Resilient In-Memory Storage'}`);
+        return ready;
+      })
+      .catch((err) => {
+        console.warn('[DB] Startup notice:', err.message);
+        return false;
+      });
+  }
+  return dbInitPromise;
+}
+
+// Kick off immediately on module load
+ensureDbReady();
+
+// Await DB initialization on every incoming request so serverless cold starts never race
+app.use(async (req, res, next) => {
+  await ensureDbReady();
+  next();
+});
 
 // -------------------------------------------------------------
 // API ROUTES

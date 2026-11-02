@@ -162,6 +162,7 @@ async function refreshLocalCache(client) {
   try {
     const { rows } = await client.query('SELECT * FROM registrations ORDER BY id DESC');
     localCache.registrations = rows;
+      isConnected = true;
     localCache.lastSynced = new Date().toISOString();
     saveLocalCache();
   } catch (err) {

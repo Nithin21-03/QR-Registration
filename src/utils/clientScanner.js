@@ -51,29 +51,7 @@ export function sanitizeTicketInput(input) {
 }
 
 // Built-in seed attendees ensuring instant offline verification
-export const DEFAULT_ATTENDEES = [
-  {
-    ticket_id: 'ZY-8507-Q7HQ',
-    full_name: 'Nithin D',
-    college: 'Sapthagiri NPS University (SNPSU)',
-    email: 'nithin.d@snpsu.edu.in',
-    phone: '+91 91234 56789',
-    student_id: '1SG22CS001',
-    event_name: 'NeuralHack: 36H National Hackathon',
-    event_id: 'neural-hack',
-    team_name: 'CortexCore',
-    team_members: ['Akash D', 'Tarun K', 'Deepa S'],
-    amount_paid: '₹1500',
-    transaction_ref: 'UTR-VERIFIED-778',
-    status: 'CONFIRMED',
-    checked_in: false,
-    checked_in_at: null,
-    checked_in_by: null,
-    food_claimed: false,
-    food_claimed_at: null,
-    food_claimed_by: null,
-  },
-];
+export const DEFAULT_ATTENDEES = [];
 
 /**
  * Load attendees from localStorage, preloading DEFAULT_ATTENDEES if needed
@@ -83,19 +61,16 @@ export function loadClientAttendees() {
     const raw = localStorage.getItem('zyntra_local_registrations') || localStorage.getItem('zyntra_attendees');
     if (raw) {
       const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         // Purge old demo registrations if present
-        const hasStaleDemo = list.some((a) => a.ticket_id === 'ZY-4821-B7E2' && a.checked_in);
-        if (!hasStaleDemo) {
-          return list;
-        }
+        const cleaned = list.filter((a) => !a.ticket_id?.startsWith('RIT26-') && a.ticket_id !== 'ZY-4821-B7E2' && a.ticket_id !== 'ZY-7734-C9A1');
+        return cleaned;
       }
     }
   } catch (e) {
     console.warn('LocalStorage attendees load note:', e);
   }
-  saveClientAttendees(DEFAULT_ATTENDEES);
-  return [...DEFAULT_ATTENDEES];
+  return [];
 }
 
 /**
@@ -119,7 +94,6 @@ export function loadClientScans() {
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list)) {
-        // Filter out any stale dummy scans
         return list.filter((s) => s.ticket_id !== 'ZY-4821-B7E2' && s.ticket_id !== 'ZY-7734-C9A1');
       }
     }
