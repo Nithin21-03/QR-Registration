@@ -12,7 +12,8 @@ const __dirname = path.dirname(__filename);
 const { Pool } = pg;
 
 // Local fallback data directory for high resilience / offline mode
-const dataDir = path.join(__dirname, 'data');
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const dataDir = isServerless ? path.join('/tmp', 'zyntra_data') : path.join(__dirname, 'data');
 const cacheFile = path.join(dataDir, 'scanner_cache.json');
 
 try {
@@ -224,7 +225,7 @@ export async function verifyPass(rawInput) {
   if (!queryParam) return null;
 
   // Try live database first
-  if (pool && isConnected) {
+  if (pool) {
     try {
       const res = await pool.query(
         `SELECT * FROM registrations 
@@ -322,7 +323,7 @@ export async function processScan({ ticketInput, scanType = 'MAIN_ENTRANCE', sta
     attendee.checked_in_at = now.toISOString();
     attendee.checked_in_by = `${station} (${volunteer})`;
 
-    if (pool && isConnected) {
+    if (pool) {
       try {
         await pool.query(
           `UPDATE registrations 
@@ -395,7 +396,7 @@ export async function processScan({ ticketInput, scanType = 'MAIN_ENTRANCE', sta
     attendee.food_claimed_at = now.toISOString();
     attendee.food_claimed_by = `${station} (${volunteer})`;
 
-    if (pool && isConnected) {
+    if (pool) {
       try {
         await pool.query(
           `UPDATE registrations 
@@ -452,7 +453,7 @@ async function logScanAttempt({ ticketId, scanType, station, volunteer, result, 
   if (localCache.scans.length > 500) localCache.scans.pop();
   saveLocalCache();
 
-  if (pool && isConnected) {
+  if (pool) {
     try {
       await pool.query(
         `INSERT INTO attendance_scans (ticket_id, scan_type, scanner_station, volunteer_name, result, details)
@@ -478,7 +479,7 @@ export async function undoScan({ ticketId, scanType }) {
     attendee.checked_in_at = null;
     attendee.checked_in_by = null;
 
-    if (pool && isConnected) {
+    if (pool) {
       try {
         await pool.query(
           `UPDATE registrations 
@@ -495,7 +496,7 @@ export async function undoScan({ ticketId, scanType }) {
     attendee.food_claimed_at = null;
     attendee.food_claimed_by = null;
 
-    if (pool && isConnected) {
+    if (pool) {
       try {
         await pool.query(
           `UPDATE registrations 
@@ -519,7 +520,7 @@ export async function undoScan({ ticketId, scanType }) {
 export async function getStats() {
   let list = localCache.registrations;
 
-  if (pool && isConnected) {
+  if (pool) {
     try {
       const { rows } = await pool.query('SELECT * FROM registrations ORDER BY id DESC');
       list = rows;
@@ -596,7 +597,7 @@ export async function getStats() {
 export async function getAttendees({ search = '', status = 'ALL', eventId = 'ALL', limit = 100 }) {
   let list = localCache.registrations;
 
-  if (pool && isConnected) {
+  if (pool) {
     try {
       const { rows } = await pool.query('SELECT * FROM registrations ORDER BY id DESC');
       list = rows;
@@ -821,7 +822,7 @@ export async function seedSampleData() {
   let seededCount = 0;
 
   for (const item of sampleAttendees) {
-    if (pool && isConnected) {
+    if (pool) {
       try {
         await pool.query(
           `INSERT INTO registrations (ticket_id, full_name, college, email, phone, student_id, event_id, event_name, team_name, team_members, status)
