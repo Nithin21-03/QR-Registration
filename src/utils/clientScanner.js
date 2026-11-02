@@ -73,132 +73,6 @@ export const DEFAULT_ATTENDEES = [
     food_claimed_at: null,
     food_claimed_by: null,
   },
-  {
-    ticket_id: 'ZY-4821-B7E2',
-    full_name: 'Adarsh Rao',
-    college: 'Sapthagiri NPS University (SNPSU)',
-    email: 'adarsh.rao@snpsu.edu.in',
-    phone: '+91 9916011220',
-    student_id: '1SG22CS088',
-    event_name: 'Project / Paper Presentation',
-    event_id: 'paper',
-    team_name: 'NeuralInnovators',
-    team_members: ['Kavya S', 'Rahul M'],
-    amount_paid: '₹500',
-    transaction_ref: 'DEMO-UTR',
-    status: 'CONFIRMED',
-    checked_in: true,
-    checked_in_at: new Date(Date.now() - 3600000).toISOString(),
-    checked_in_by: 'Gate 1 (Main Entrance)',
-    food_claimed: true,
-    food_claimed_at: new Date(Date.now() - 1800000).toISOString(),
-    food_claimed_by: 'Food Counter A',
-  },
-  {
-    ticket_id: 'ZY-7734-C9A1',
-    full_name: 'Sneha Venkatesh',
-    college: 'Ramaiah Institute of Technology',
-    email: 'sneha.v@msrit.edu',
-    phone: '+91 9845123456',
-    student_id: '1MS22AI045',
-    event_name: 'Prompt Detection + Pixel Art',
-    event_id: 'prompt',
-    team_name: 'PixelPrompt AI',
-    team_members: ['Ananya P'],
-    amount_paid: '₹500',
-    transaction_ref: 'DEMO-UTR',
-    status: 'CONFIRMED',
-    checked_in: true,
-    checked_in_at: new Date(Date.now() - 2400000).toISOString(),
-    checked_in_by: 'Gate 2 (Volunteer)',
-    food_claimed: false,
-    food_claimed_at: null,
-    food_claimed_by: null,
-  },
-  {
-    ticket_id: 'RIT26-NEUR-BA9F9D',
-    full_name: 'Rohan Mathur',
-    college: 'Ramaiah Institute of Technology',
-    email: 'rohan.mathur@msrit.edu',
-    phone: '+91 9880112233',
-    student_id: '1MS22CS110',
-    event_name: 'NeuralHack: 36H National Hackathon',
-    event_id: 'neural-hack',
-    team_name: 'CortexCore',
-    team_members: ['Akash D', 'Tarun K'],
-    amount_paid: '₹1500',
-    transaction_ref: 'DEMO-UTR',
-    status: 'CONFIRMED',
-    checked_in: false,
-    checked_in_at: null,
-    checked_in_by: null,
-    food_claimed: false,
-    food_claimed_at: null,
-    food_claimed_by: null,
-  },
-  {
-    ticket_id: 'ZY-5591-L3P8',
-    full_name: 'Nikhil Gowda',
-    college: 'Bangalore Institute of Technology',
-    email: 'nikhil.bit@yahoo.com',
-    phone: '+91 9900445566',
-    student_id: '1BI22CS099',
-    event_name: 'UI / UX Design Competition',
-    event_id: 'ui',
-    team_name: 'FigmaMasters',
-    team_members: [],
-    amount_paid: '₹500',
-    transaction_ref: 'DEMO-UTR',
-    status: 'CONFIRMED',
-    checked_in: false,
-    checked_in_at: null,
-    checked_in_by: null,
-    food_claimed: false,
-    food_claimed_at: null,
-    food_claimed_by: null,
-  },
-  {
-    ticket_id: 'ZY-2468-K7M2',
-    full_name: 'Ananya Deshmukh',
-    college: 'IIIT Bangalore',
-    email: 'ananya.d@iiitb.ac.in',
-    phone: '+91 9341778899',
-    student_id: 'MT2022045',
-    event_name: 'Campus Treasure Hunt',
-    event_id: 'treasure',
-    team_name: 'QuantumSeekers',
-    team_members: ['Abhishek G', 'Neha R'],
-    amount_paid: '₹500',
-    transaction_ref: 'DEMO-UTR',
-    status: 'CONFIRMED',
-    checked_in: false,
-    checked_in_at: null,
-    checked_in_by: null,
-    food_claimed: false,
-    food_claimed_at: null,
-    food_claimed_by: null,
-  },
-  {
-    ticket_id: 'ZY-6549-G8H3',
-    full_name: 'Vikramaditya Sharma',
-    college: 'Sapthagiri NPS University (SNPSU)',
-    email: 'vikram.snpsu@gmail.com',
-    phone: '+91 9448119988',
-    student_id: '1SG22IS112',
-    event_name: 'Startup Pitch Summit',
-    event_id: 'pitch',
-    team_name: 'GreenGrid Mobility',
-    team_members: ['Rohit V', 'Tanvi S'],
-    amount_paid: '₹500',
-    transaction_ref: 'DEMO-UTR',
-    status: 'CONFIRMED',
-    checked_in: false,
-    checked_in_at: null,
-    checked_in_by: null,
-    food_claimed: false,
-    food_claimed_at: null,
-    food_claimed_by: null,
-  },
 ];
 
 /**
@@ -210,19 +84,17 @@ export function loadClientAttendees() {
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list) && list.length > 0) {
-        // Ensure default attendees like ZY-8507-Q7HQ are merged in
-        const existingIds = new Set(list.map((a) => (a.ticket_id || a.ticketId)));
-        DEFAULT_ATTENDEES.forEach((def) => {
-          if (!existingIds.has(def.ticket_id)) {
-            list.unshift(def);
-          }
-        });
-        return list;
+        // Purge old demo registrations if present
+        const hasStaleDemo = list.some((a) => a.ticket_id === 'ZY-4821-B7E2' && a.checked_in);
+        if (!hasStaleDemo) {
+          return list;
+        }
       }
     }
   } catch (e) {
     console.warn('LocalStorage attendees load note:', e);
   }
+  saveClientAttendees(DEFAULT_ATTENDEES);
   return [...DEFAULT_ATTENDEES];
 }
 
@@ -246,40 +118,15 @@ export function loadClientScans() {
     const raw = localStorage.getItem('zyntra_scan_audit_history');
     if (raw) {
       const list = JSON.parse(raw);
-      if (Array.isArray(list)) return list;
+      if (Array.isArray(list)) {
+        // Filter out any stale dummy scans
+        return list.filter((s) => s.ticket_id !== 'ZY-4821-B7E2' && s.ticket_id !== 'ZY-7734-C9A1');
+      }
     }
   } catch (e) {
     console.warn('LocalStorage scans load note:', e);
   }
-  return [
-    {
-      ticket_id: 'ZY-4821-B7E2',
-      scan_type: 'FOOD_COLLECTION',
-      scanned_at: new Date(Date.now() - 1800000).toISOString(),
-      scanner_station: 'Food Counter A',
-      volunteer_name: 'Food Staff',
-      result: 'FOOD_CLAIMED',
-      details: { eventName: 'Project / Paper Presentation' },
-    },
-    {
-      ticket_id: 'ZY-4821-B7E2',
-      scan_type: 'MAIN_ENTRANCE',
-      scanned_at: new Date(Date.now() - 3600000).toISOString(),
-      scanner_station: 'Gate 1 (Main Entrance)',
-      volunteer_name: 'Gate Staff',
-      result: 'VALID',
-      details: { eventName: 'Project / Paper Presentation' },
-    },
-    {
-      ticket_id: 'ZY-7734-C9A1',
-      scan_type: 'MAIN_ENTRANCE',
-      scanned_at: new Date(Date.now() - 2400000).toISOString(),
-      scanner_station: 'Gate 2',
-      volunteer_name: 'Gate Staff',
-      result: 'VALID',
-      details: { eventName: 'Prompt Detection + Pixel Art' },
-    },
-  ];
+  return [];
 }
 
 /**

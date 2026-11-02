@@ -227,3 +227,4 @@ export default function SecurityGateModal({ onAuthenticated, isLocked, onCancel 
     </div>
   );
 }
+

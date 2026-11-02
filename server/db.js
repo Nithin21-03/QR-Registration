@@ -52,7 +52,8 @@ function saveLocalCache() {
 loadLocalCache();
 
 // PostgreSQL Connection Pool for Supabase
-const databaseUrl = process.env.DATABASE_URL;
+const defaultDbUrl = 'postgresql://postgres:Nithin%4021_2@db.yjmkprrvjhvpsrnnlugn.supabase.co:5432/postgres';
+const databaseUrl = process.env.DATABASE_URL || defaultDbUrl;
 const useSsl = process.env.DATABASE_SSL !== 'false';
 
 let pool = null;

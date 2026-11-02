@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Camera,
   RefreshCw,
@@ -7,9 +7,9 @@ import {
   Upload,
   Zap,
   ZapOff,
-  Sparkles,
   QrCode,
   ArrowRight,
+  ClipboardPaste,
 } from 'lucide-react';
 import { sound } from '../utils/audioSynth';
 
@@ -18,7 +18,6 @@ export default function QRScannerView({
   station,
   volunteer,
   onScanResult,
-  samplePasses = [],
 }) {
   const [scannerActive, setScannerActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -33,7 +32,7 @@ export default function QRScannerView({
   const fileInputRef = useRef(null);
   const isFoodMode = scanMode === 'FOOD_COLLECTION';
 
-  // 1. Initialize Cameras & Camera Scanner
+  // 1. Initialize Cameras & Start Mobile Viewport
   useEffect(() => {
     let isMounted = true;
 
@@ -53,14 +52,13 @@ export default function QRScannerView({
           setSelectedCameraId(initialId);
           startCamera(initialId);
         } else {
-          setCameraError('No camera detected. You can scan via photo upload or manual search.');
+          // If camera enumeration is restricted, try starting with facingMode
+          startCamera(null);
         }
       } catch (err) {
-        console.warn('Camera setup note:', err.message);
+        console.warn('Camera setup note, trying direct environment camera:', err.message);
         if (isMounted) {
-          setCameraError(
-            'Camera access requires permission or HTTPS/localhost. You can use photo upload or manual search.'
-          );
+          startCamera(null);
         }
       }
     }
@@ -73,7 +71,7 @@ export default function QRScannerView({
     };
   }, []);
 
-  // 2. Start Scanner with chosen camera
+  // 2. Start Scanner with Hardware BarcodeDetector & Full-Frame Decoding
   const startCamera = async (cameraId) => {
     try {
       setCameraError('');
@@ -81,37 +79,49 @@ export default function QRScannerView({
         await stopCamera();
       }
 
-      const html5QrCode = new Html5Qrcode('qr-reader-viewport');
+      // Initialize with hardware BarcodeDetector and QR format filter
+      const html5QrCode = new Html5Qrcode('qr-reader-viewport', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true, // Native OS / GPU acceleration for rapid screen & glare decoding
+        },
+      });
       html5QrCodeRef.current = html5QrCode;
 
-      // Responsive QR scan box optimized for all mobile screen dimensions
-      const config = {
-        fps: 15,
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const size = Math.floor(minEdge * 0.72);
-          return {
-            width: Math.max(180, Math.min(size, 260)),
-            height: Math.max(180, Math.min(size, 260)),
-          };
+      const cameraConfig = cameraId
+        ? { deviceId: { exact: cameraId } }
+        : { facingMode: { ideal: 'environment' } };
+
+      const scanConfig = {
+        fps: 25, // 25 scans per second for instant trigger
+        // Full-frame scanning area: detects QR codes anywhere in the camera feed
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+          width: Math.floor(viewfinderWidth * 0.94),
+          height: Math.floor(viewfinderHeight * 0.94),
+        }),
+        videoConstraints: {
+          facingMode: { ideal: 'environment' },
+          focusMode: { ideal: 'continuous' },
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
         },
-        aspectRatio: 1.0,
       };
 
       await html5QrCode.start(
-        cameraId,
-        config,
+        cameraConfig,
+        scanConfig,
         (decodedText) => {
           handleDetectedCode(decodedText);
         },
         () => {
-          // Ignore periodic frame decode misses
+          // Ignore non-decoded frames
         }
       );
 
       setScannerActive(true);
 
-      // Check for torch / flashlight capability on mobile device
+      // Check torch / flashlight support
       try {
         const track = html5QrCode.getRunningTrackCameraCapabilities();
         if (track && track.torchFeature().isSupported()) {
@@ -124,7 +134,7 @@ export default function QRScannerView({
       console.warn('Camera start error:', err);
       setScannerActive(false);
       setCameraError(
-        'Could not access camera feed. Please check browser permissions or use manual entry below.'
+        'Camera permission required. Please allow camera access in browser settings or type the Pass ID below.'
       );
     }
   };
@@ -145,15 +155,19 @@ export default function QRScannerView({
     }
   };
 
-  // 4. Handle QR detection with debounce
+  // 4. Handle QR detection with haptic feedback & debounce
   const handleDetectedCode = async (decodedText) => {
     if (isProcessing) return;
     setIsProcessing(true);
 
+    if (navigator.vibrate) {
+      navigator.vibrate(60);
+    }
+
     try {
       await onScanResult(decodedText);
     } finally {
-      // 1.5s debounce before next scan to prevent duplicate camera firing
+      // 1.5s debounce before next scan
       setTimeout(() => {
         setIsProcessing(false);
       }, 1500);
@@ -171,7 +185,7 @@ export default function QRScannerView({
       setTorchOn(nextState);
       sound.playClick();
     } catch (err) {
-      console.warn('Torch toggle not supported:', err);
+      console.warn('Torch toggle error:', err);
     }
   };
 
@@ -198,10 +212,8 @@ export default function QRScannerView({
       qrScanner.clear();
       handleDetectedCode(decodedResult);
     } catch (err) {
-      sound.playError();
-      alert('Could not decode a valid QR code from this photo. Please ensure the QR code is clear and not blurry.');
-    } finally {
-      e.target.value = '';
+      console.warn('Photo scan error:', err);
+      alert('Could not detect a valid QR code in the selected photo. Please ensure it is clear.');
     }
   };
 
@@ -214,14 +226,37 @@ export default function QRScannerView({
     setManualInput('');
   };
 
+  // 9. Quick Paste from Clipboard
+  const handlePasteClipboard = async () => {
+    try {
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          sound.playClick();
+          setManualInput(text.trim());
+          handleDetectedCode(text.trim());
+        }
+      }
+    } catch (_) {}
+  };
+
   return (
     <div className="scanner-viewport-card glass">
+      {/* Hidden File Input for Gallery QR Scan */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileUpload}
+      />
+
       {/* Top Header of Scanner */}
       <div className="viewport-header">
         <div className="viewport-badge">
           <QrCode size={16} className={isFoodMode ? 'text-amber' : 'text-cyan'} />
           <span>
-            {isFoodMode ? 'Food Station Scan · Meal Token' : 'Entrance Gate Scan · Ticket Verification'}
+            {isFoodMode ? 'Food Station · Meal Scanner' : 'Entrance Gate · Pass Scanner'}
           </span>
         </div>
 
@@ -259,13 +294,6 @@ export default function QRScannerView({
           >
             <Upload size={16} />
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleFileUpload}
-          />
         </div>
       </div>
 
@@ -278,6 +306,9 @@ export default function QRScannerView({
           <>
             <div className="scanning-laser" />
             <div className="corner-brackets" />
+            <div className="scanner-target-hint">
+              <span>POINT CAMERA AT ZYNTRA PASS QR</span>
+            </div>
           </>
         )}
 
@@ -315,9 +346,20 @@ export default function QRScannerView({
               className="manual-input"
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value)}
-              placeholder="Pass ID (ZY-...), USN, or Name..."
+              placeholder="Pass ID (ZY-8507-Q7HQ), USN, or Name..."
               aria-label="Search or enter Pass ID"
             />
+            {navigator.clipboard && (
+              <button
+                type="button"
+                className="paste-quick-btn"
+                onClick={handlePasteClipboard}
+                title="Paste from clipboard"
+              >
+                <ClipboardPaste size={14} />
+                <span>Paste</span>
+              </button>
+            )}
           </div>
           <button
             type="submit"
@@ -328,33 +370,6 @@ export default function QRScannerView({
             <ArrowRight size={15} />
           </button>
         </form>
-
-        {/* Quick Clickable Test Passes Drawer for instant mobile testing */}
-        {samplePasses.length > 0 && (
-          <div className="test-passes-wrapper">
-            <div className="test-passes-label">
-              <Sparkles size={12} className="text-cyan" />
-              <span>Tap Sample Pass to Simulate Scan:</span>
-            </div>
-            <div className="test-passes-bar">
-              {samplePasses.slice(0, 8).map((pass) => (
-                <button
-                  key={pass.ticket_id}
-                  type="button"
-                  className="test-pass-pill"
-                  onClick={() => {
-                    sound.playClick();
-                    handleDetectedCode(pass.ticket_id);
-                  }}
-                  title={`Test scan for ${pass.full_name} (${pass.event_name})`}
-                >
-                  <span className="pill-id">{pass.ticket_id}</span>
-                  <span className="pill-name">· {pass.full_name.split(' ')[0]}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

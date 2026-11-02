@@ -4,7 +4,6 @@ import {
   Volume2,
   VolumeX,
   Vibrate,
-  Sparkles,
   MapPin,
   User,
   Lock,
@@ -17,8 +16,6 @@ export default function Header({
   volunteer,
   setVolunteer,
   health,
-  onSeedData,
-  isSeeding,
   onLockTerminal,
 }) {
   const [muted, setMuted] = useState(false);
@@ -47,13 +44,13 @@ export default function Header({
         {/* Brand Section */}
         <div className="brand-section">
           <div className="brand-logo-crest">
-            <ShieldCheck size={22} />
+            <ShieldCheck size={20} />
           </div>
           <div className="brand-text">
             <h1>
               ZYNTRA <span>’26</span>
             </h1>
-            <div className="brand-sub">PASS SCANNER</div>
+            <div className="brand-sub">SCANNER</div>
           </div>
         </div>
 
@@ -62,11 +59,11 @@ export default function Header({
           {/* Supabase Status Indicator */}
           <div
             className={`status-indicator ${isConnected ? 'connected' : 'local'}`}
-            title={isConnected ? 'Connected to Supabase PostgreSQL (Live Sync · 3.5s)' : 'Operating in Local Resilient Cache'}
+            title={isConnected ? 'Connected to Supabase PostgreSQL (Live Real-Time Sync)' : 'Connecting to Cloud Engine'}
           >
             <div className="status-dot" />
             <span className="status-label-desktop">
-              {isConnected ? 'Supabase Live' : 'Local Cache'}
+              {isConnected ? 'Supabase Live' : 'Connecting...'}
             </span>
           </div>
 
@@ -78,7 +75,7 @@ export default function Header({
             title={muted ? 'Unmute Audio Chimes' : 'Mute Audio Chimes'}
             aria-label="Toggle Sound"
           >
-            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
 
           {/* Haptics Toggle */}
@@ -89,7 +86,7 @@ export default function Header({
             title={haptics ? 'Disable Vibration Haptics' : 'Enable Vibration Haptics'}
             aria-label="Toggle Vibration"
           >
-            <Vibrate size={16} />
+            <Vibrate size={15} />
           </button>
 
           {/* Terminal Lock Button */}
@@ -104,17 +101,17 @@ export default function Header({
               title="Lock Scanner Terminal (Require Passcode)"
               aria-label="Lock Terminal"
             >
-              <Lock size={16} />
+              <Lock size={15} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Secondary Row / Station & Volunteer Operator Controls */}
+      {/* Secondary Row: Station & Volunteer Operator Controls */}
       <div className="header-station-row">
         {/* Physical Station / Gate Selector */}
         <div className="station-select-wrapper">
-          <MapPin size={14} className="station-icon" />
+          <MapPin size={13} className="station-icon" />
           <select
             className="station-select"
             value={station}
@@ -135,31 +132,17 @@ export default function Header({
 
         {/* Volunteer Name */}
         <div className="volunteer-input-wrapper">
-          <User size={14} className="volunteer-icon" />
+          <User size={13} className="volunteer-icon" />
           <input
             type="text"
             className="volunteer-input"
             value={volunteer}
             onChange={(e) => setVolunteer(e.target.value)}
-            placeholder="Operator Name"
+            placeholder="Volunteer"
             title="Logged Volunteer Name"
             aria-label="Volunteer Name"
           />
         </div>
-
-        {/* Seed Sample Passes (visible only when 0 attendees loaded) */}
-        {health?.totalAttendees === 0 && (
-          <button
-            type="button"
-            className="btn-secondary seed-btn"
-            onClick={onSeedData}
-            disabled={isSeeding}
-            title="Load sample Zyntra passes for testing"
-          >
-            <Sparkles size={13} className="text-cyan" />
-            <span>{isSeeding ? 'Seeding...' : 'Load Demo Passes'}</span>
-          </button>
-        )}
       </div>
     </header>
   );

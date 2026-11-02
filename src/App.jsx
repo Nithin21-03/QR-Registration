@@ -394,8 +394,6 @@ export default function App() {
         volunteer={volunteer}
         setVolunteer={setVolunteer}
         health={health}
-        onSeedData={handleSeed}
-        isSeeding={isSeeding}
         onLockTerminal={() => {
           sessionStorage.removeItem('zyntra_auth_token');
           setAuthToken(null);
@@ -422,7 +420,6 @@ export default function App() {
               station={station}
               volunteer={volunteer}
               onScanResult={handleScan}
-              samplePasses={attendees}
             />
 
             {/* Right: Live Scan Feed */}
@@ -447,13 +444,14 @@ export default function App() {
                 {recentScans.length === 0 ? (
                   <div
                     style={{
-                      padding: '40px 20px',
+                      padding: '30px 16px',
                       textAlign: 'center',
-                      color: 'rgba(228, 244, 255, 0.4)',
-                      fontSize: '0.85rem',
+                      color: 'rgba(228, 244, 255, 0.45)',
+                      fontSize: '0.82rem',
+                      lineHeight: '1.5',
                     }}
                   >
-                    No scan activity recorded yet. Scan passes or click a demo pass to test.
+                    No scan activity recorded yet. Ready to scan ZYNTRA passes.
                   </div>
                 ) : (
                   recentScans.map((scan, i) => (
