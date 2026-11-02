@@ -62,8 +62,15 @@ export function loadClientAttendees() {
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list)) {
-        // Purge old demo registrations if present
-        const cleaned = list.filter((a) => !a.ticket_id?.startsWith('RIT26-') && a.ticket_id !== 'ZY-4821-B7E2' && a.ticket_id !== 'ZY-7734-C9A1');
+        // Purge old demo registrations or synthetic entries if present
+        const cleaned = list.filter(
+          (a) =>
+            a &&
+            !a.ticket_id?.startsWith('RIT26-') &&
+            a.ticket_id !== 'ZY-4821-B7E2' &&
+            a.ticket_id !== 'ZY-7734-C9A1' &&
+            a.full_name !== 'Festival Candidate'
+        );
         return cleaned;
       }
     }
@@ -139,43 +146,15 @@ export function processClientScan({
     );
   });
 
-  // If attendee not found in seed cache, synthesize a valid registered pass
-  // so valid festival registrations (like ZY-8507-Q7HQ) are NEVER locked out!
+  // If attendee not found in registry, return INVALID with helpful guidance
   if (!attendee) {
-    const isZyFormat = /^ZY-[0-9A-Z]{4}-[0-9A-Z]{4}$/i.test(ticketId) || ticketId.startsWith('ZY-') || ticketId.startsWith('RIT');
-    if (isZyFormat) {
-      attendee = {
-        ticket_id: ticketId.toUpperCase(),
-        full_name: 'Festival Candidate',
-        college: 'Sapthagiri NPS University (SNPSU)',
-        email: `candidate.${ticketId.slice(-4).toLowerCase()}@snpsu.edu.in`,
-        phone: '+91 98800 00000',
-        student_id: `SNPSU-${ticketId.slice(-4)}`,
-        event_name: 'ZYNTRA Competition Arena',
-        event_id: 'competition-arena',
-        team_name: 'Zyntra Tech Team',
-        team_members: ['Participant Lead', 'Team Partner'],
-        amount_paid: '₹100',
-        transaction_ref: 'VERIFIED-UPI',
-        status: 'CONFIRMED',
-        checked_in: false,
-        checked_in_at: null,
-        checked_in_by: null,
-        food_claimed: false,
-        food_claimed_at: null,
-        food_claimed_by: null,
-      };
-      attendees.unshift(attendee);
-      saveClientAttendees(attendees);
-    } else {
-      return {
-        result: 'INVALID',
-        message: `Pass not recognized in registry: ${ticketId}. Please check ticket credentials.`,
-        attendee: null,
-        timestamp: new Date().toISOString(),
-        station,
-      };
-    }
+    return {
+      result: 'INVALID',
+      message: `Pass "${ticketId}" not found in ZYNTRA registry. Direct attendee to Helpdesk.`,
+      attendee: null,
+      timestamp: new Date().toISOString(),
+      station,
+    };
   }
 
   const nowIso = new Date().toISOString();

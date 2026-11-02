@@ -13,6 +13,8 @@ import {
   getAttendees,
   generateAttendanceCsv,
   seedSampleData,
+  insertAttendee,
+  importAttendeesBatch,
 } from './db.js';
 import {
   applySecurityHeaders,
@@ -195,7 +197,35 @@ app.post('/api/undo-scan', requireVolunteerAuth, async (req, res) => {
   }
 });
 
-// 7. Seed Demo Zyntra Attendees (Secured)
+// 7. Add or Update Single Attendee (Secured)
+app.post('/api/attendees', requireVolunteerAuth, async (req, res) => {
+  try {
+    const attendee = req.body;
+    if (!attendee?.ticket_id || !attendee?.full_name) {
+      return res.status(400).json({ success: false, message: 'ticket_id and full_name are required' });
+    }
+    const result = await insertAttendee(attendee);
+    res.json({ success: true, message: `Attendee ${attendee.full_name} (${attendee.ticket_id}) registered successfully in database.`, details: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 8. Batch Import Attendees from CSV/JSON (Secured)
+app.post('/api/import', requireVolunteerAuth, async (req, res) => {
+  try {
+    const { attendees } = req.body;
+    if (!Array.isArray(attendees)) {
+      return res.status(400).json({ success: false, message: 'attendees array is required' });
+    }
+    const result = await importAttendeesBatch(attendees);
+    res.json({ success: true, message: `Successfully imported ${result.count} attendees into database.`, details: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 9. Seed Demo Zyntra Attendees (Empty/Safe)
 app.post('/api/seed', requireVolunteerAuth, async (req, res) => {
   try {
     const result = await seedSampleData();

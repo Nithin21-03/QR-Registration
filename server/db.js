@@ -52,24 +52,9 @@ function saveLocalCache() {
 
 loadLocalCache();
 
-// PostgreSQL Connection Pool for Supabase (using Supavisor IPv4 Pooler for Vercel/Serverless support)
-const defaultDbUrl = 'postgresql://postgres.yjmkprrvjhvpsrnnlugn:Nithin%4021_2@aws-1-eu-west-3.pooler.supabase.com:5432/postgres';
-
-function normalizeDatabaseUrl(raw) {
-  let url = (raw || defaultDbUrl).trim();
-  // Auto-rewrite direct Supabase IPv6 host (which fails on Vercel serverless with ENOTFOUND) to IPv4 Pooler
-  if (url.includes('db.yjmkprrvjhvpsrnnlugn.supabase.co')) {
-    url = url
-      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co:5432', 'aws-1-eu-west-3.pooler.supabase.com:5432')
-      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co', 'aws-1-eu-west-3.pooler.supabase.com:5432');
-    if (!url.includes('postgres.yjmkprrvjhvpsrnnlugn:')) {
-      url = url.replace('postgres:', 'postgres.yjmkprrvjhvpsrnnlugn:');
-    }
-  }
-  return url;
-}
-
-const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
+// PostgreSQL Connection Pool for Supabase
+const defaultDbUrl = 'postgresql://postgres:Nithin%4021_2@db.yjmkprrvjhvpsrnnlugn.supabase.co:5432/postgres';
+const databaseUrl = (process.env.DATABASE_URL || defaultDbUrl).trim();
 const useSsl = process.env.DATABASE_SSL !== 'false';
 
 let pool = globalThis._zyntraPgPool || null;
@@ -83,7 +68,7 @@ if (!pool && databaseUrl) {
       ssl: useSsl ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: 7000,
       idleTimeoutMillis: 10000,
-      max: 3,
+      max: 5,
     });
 
     pool.on('error', (err) => {
@@ -101,7 +86,7 @@ if (!pool && databaseUrl) {
  */
 export async function initDatabase() {
   if (!pool) return false;
-  if (isConnected && localCache.registrations.length > 0) return true;
+  if (isConnected) return true;
 
   try {
     const client = await pool.connect();
@@ -653,182 +638,94 @@ export async function generateAttendanceCsv() {
 /**
  * Seed database with realistic demo Zyntra attendees if empty
  */
-export async function seedSampleData() {
-  const sampleAttendees = [
-    {
-      ticket_id: 'ZY-4821-B7E2',
-      full_name: 'Adarsh Rao',
-      college: 'Sapthagiri NPS University (SNPSU)',
-      email: 'adarsh.rao@snpsu.edu.in',
-      phone: '+91 9916011220',
-      student_id: '1SG22CS088',
-      event_id: 'paper',
-      event_name: 'Project / Paper Presentation',
-      team_name: 'NeuralInnovators',
-      team_members: ['Kavya S', 'Rahul M'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-7734-C9A1',
-      full_name: 'Sneha Venkatesh',
-      college: 'Ramaiah Institute of Technology',
-      email: 'sneha.v@msrit.edu',
-      phone: '+91 9845123456',
-      student_id: '1MS22AI045',
-      event_id: 'prompt',
-      event_name: 'Prompt Detection + Pixel Art',
-      team_name: 'PixelPrompt AI',
-      team_members: ['Ananya P'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-1092-D4F3',
-      full_name: 'Karthik Subramanian',
-      college: 'BMS College of Engineering',
-      email: 'karthik.s@bmsce.ac.in',
-      phone: '+91 9731234567',
-      student_id: '1BM22IS019',
-      event_id: 'crime',
-      event_name: 'Crime Scene: Forensic AI',
-      team_name: 'SherlockBytes',
-      team_members: ['Gaurav K', 'Varun N', 'Rhea D'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-8820-F1E8',
-      full_name: 'Pooja Hegde',
-      college: 'PES University, Ring Road',
-      email: 'pooja.hegde@pes.edu',
-      phone: '+91 9611223344',
-      student_id: 'PES1UG22CS301',
-      event_id: 'debug',
-      event_name: 'System Design & High Scale',
-      team_name: 'ByteArchitects',
-      team_members: ['Siddharth M'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-3351-A2B9',
-      full_name: 'Mohammed Farhan',
-      college: 'Dayananda Sagar College of Engineering',
-      email: 'farhan.dsce@gmail.com',
-      phone: '+91 9148332211',
-      student_id: '1DS22EC072',
-      event_id: 'escape',
-      event_name: 'Escape Room Cyber Challenge',
-      team_name: 'CipherLock',
-      team_members: ['Zaid K', 'Arbaaz A'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-9182-E5D7',
-      full_name: 'Divya Nambiar',
-      college: 'RV College of Engineering',
-      email: 'divya.rvce@gmail.com',
-      phone: '+91 9886554433',
-      student_id: '1RV22CS064',
-      event_id: 'wiki',
-      event_name: 'WikiRace Speed Challenge',
-      team_name: 'WikiWarp',
-      team_members: [],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-6549-G8H3',
-      full_name: 'Vikramaditya Sharma',
-      college: 'Sapthagiri NPS University (SNPSU)',
-      email: 'vikram.snpsu@gmail.com',
-      phone: '+91 9448119988',
-      student_id: '1SG22IS112',
-      event_id: 'pitch',
-      event_name: 'Startup Pitch Summit',
-      team_name: 'GreenGrid Mobility',
-      team_members: ['Rohit V', 'Tanvi S'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-2468-K7M2',
-      full_name: 'Ananya Deshmukh',
-      college: 'International Institute of Information Technology (IIIT-B)',
-      email: 'ananya.d@iiitb.ac.in',
-      phone: '+91 9341778899',
-      student_id: 'MT2022045',
-      event_id: 'treasure',
-      event_name: 'Campus Treasure Hunt',
-      team_name: 'QuantumSeekers',
-      team_members: ['Abhishek G', 'Neha R', 'Pranav K'],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'ZY-5591-L3P8',
-      full_name: 'Nikhil Gowda',
-      college: 'Bangalore Institute of Technology',
-      email: 'nikhil.bit@yahoo.com',
-      phone: '+91 9900445566',
-      student_id: '1BI22CS099',
-      event_id: 'ui',
-      event_name: 'UI / UX Design Competition',
-      team_name: 'FigmaMasters',
-      team_members: [],
-      status: 'CONFIRMED',
-    },
-    {
-      ticket_id: 'RIT26-NEUR-BA9F9D',
-      full_name: 'Rohan Mathur',
-      college: 'Ramaiah Institute of Technology',
-      email: 'rohan.mathur@msrit.edu',
-      phone: '+91 9880112233',
-      student_id: '1MS22CS110',
-      event_id: 'neural-hack',
-      event_name: 'NeuralHack: 36H National Hackathon',
-      team_name: 'CortexCore',
-      team_members: ['Akash D', 'Tarun K', 'Deepa S'],
-      status: 'CONFIRMED',
-    },
-  ];
+export async function insertAttendee(attendee) {
+  if (!attendee || !attendee.ticket_id || !attendee.full_name) {
+    throw new Error('ticket_id and full_name are required');
+  }
 
-  let seededCount = 0;
+  const ticketId = sanitizeTicketInput(attendee.ticket_id).toUpperCase();
+  const fullName = String(attendee.full_name).trim();
+  const college = String(attendee.college || '').trim();
+  const email = String(attendee.email || '').trim();
+  const phone = String(attendee.phone || '').trim();
+  const studentId = String(attendee.student_id || attendee.studentId || attendee.usn || '').trim();
+  const eventId = String(attendee.event_id || attendee.eventId || 'general').trim();
+  const eventName = String(attendee.event_name || attendee.eventName || 'Zyntra Fest').trim();
+  const teamName = String(attendee.team_name || attendee.teamName || '').trim();
+  const teamMembers = JSON.stringify(Array.isArray(attendee.team_members) ? attendee.team_members : []);
+  const status = String(attendee.status || 'CONFIRMED').trim();
 
-  for (const item of sampleAttendees) {
-    if (pool) {
-      try {
-        await pool.query(
-          `INSERT INTO registrations (ticket_id, full_name, college, email, phone, student_id, event_id, event_name, team_name, team_members, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (ticket_id) DO NOTHING`,
-          [
-            item.ticket_id,
-            item.full_name,
-            item.college,
-            item.email,
-            item.phone,
-            item.student_id,
-            item.event_id,
-            item.event_name,
-            item.team_name,
-            JSON.stringify(item.team_members || []),
-            item.status,
-          ]
-        );
-        seededCount++;
-      } catch (err) {
-        console.warn('DB seed single item note:', err.message);
-      }
-    }
+  if (pool) {
+    await pool.query(
+      `INSERT INTO registrations (ticket_id, full_name, college, email, phone, student_id, event_id, event_name, team_name, team_members, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (ticket_id) DO UPDATE SET
+         full_name = EXCLUDED.full_name,
+         college = EXCLUDED.college,
+         email = EXCLUDED.email,
+         phone = EXCLUDED.phone,
+         student_id = EXCLUDED.student_id,
+         event_id = EXCLUDED.event_id,
+         event_name = EXCLUDED.event_name,
+         team_name = EXCLUDED.team_name,
+         team_members = EXCLUDED.team_members,
+         status = EXCLUDED.status`,
+      [ticketId, fullName, college, email, phone, studentId, eventId, eventName, teamName, teamMembers, status]
+    );
 
-    // Also update localCache
-    if (!localCache.registrations.find((r) => r.ticket_id === item.ticket_id)) {
-      localCache.registrations.push({
+    // Refresh local cache with latest DB records
+    const { rows } = await pool.query('SELECT * FROM registrations ORDER BY id DESC');
+    localCache.registrations = rows || [];
+    saveLocalCache();
+  } else {
+    const existing = localCache.registrations.find((r) => r.ticket_id === ticketId);
+    if (existing) {
+      Object.assign(existing, { full_name: fullName, college, email, phone, student_id: studentId, event_name: eventName, team_name: teamName });
+    } else {
+      localCache.registrations.unshift({
         id: localCache.registrations.length + 1,
-        ...item,
+        ticket_id: ticketId,
+        full_name: fullName,
+        college,
+        email,
+        phone,
+        student_id: studentId,
+        event_id: eventId,
+        event_name: eventName,
+        team_name: teamName,
+        team_members: JSON.parse(teamMembers),
+        status,
         checked_in: false,
         food_claimed: false,
         created_at: new Date().toISOString(),
       });
     }
+    saveLocalCache();
   }
 
-  saveLocalCache();
-  return { success: true, count: seededCount, total: localCache.registrations.length };
+  return { success: true, ticket_id: ticketId };
+}
+
+export async function importAttendeesBatch(list) {
+  if (!Array.isArray(list) || list.length === 0) {
+    return { success: true, count: 0 };
+  }
+
+  let count = 0;
+  for (const item of list) {
+    if (item.ticket_id && item.full_name) {
+      await insertAttendee(item);
+      count++;
+    }
+  }
+
+  return { success: true, count, total: localCache.registrations.length };
+}
+
+/**
+ * Seed Sample Zyntra Registrations (Empty by default to ensure 100% database driven)
+ */
+export async function seedSampleData() {
+  return { success: true, count: 0, total: localCache.registrations.length };
 }
 

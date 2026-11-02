@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Search,
   CheckCircle2,
   Utensils,
   Download,
+  Upload,
   ShieldCheck,
   RotateCcw,
   School,
@@ -18,10 +19,12 @@ export default function AttendeeDirectory({
   onUndoScan,
   onViewPass,
   onExportCsv,
+  onImportCsv,
   isExporting,
 }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const fileInputRef = useRef(null);
 
   const filtered = attendees.filter((a) => {
     // Search filter
@@ -72,16 +75,45 @@ export default function AttendeeDirectory({
           />
         </div>
 
-        <button
-          type="button"
-          className="btn-primary export-csv-btn"
-          onClick={onExportCsv}
-          disabled={isExporting}
-          title="Export complete attendee spreadsheet as CSV"
-        >
-          <Download size={15} />
-          <span>{isExporting ? 'Exporting...' : 'Export CSV'}</span>
-        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file && onImportCsv) {
+              sound.playClick();
+              onImportCsv(file);
+              e.target.value = '';
+            }
+          }}
+        />
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {onImportCsv && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+              title="Upload attendee spreadsheet CSV into Supabase database"
+            >
+              <Upload size={15} />
+              <span>Import CSV</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="btn-primary export-csv-btn"
+            onClick={onExportCsv}
+            disabled={isExporting}
+            title="Export complete attendee spreadsheet as CSV"
+          >
+            <Download size={15} />
+            <span>{isExporting ? 'Exporting...' : 'Export CSV'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Chips Bar */}
@@ -122,8 +154,10 @@ export default function AttendeeDirectory({
       {/* 1. Mobile Cards Layout (visible on screens <= 768px) */}
       <div className="attendee-mobile-list">
         {filtered.length === 0 ? (
-          <div className="empty-directory-msg">
-            No attendees found matching filter.
+          <div className="empty-directory-msg" style={{ padding: '36px 16px', textAlign: 'center' }}>
+            {attendees.length === 0
+              ? 'Database registry is currently empty (0 registered attendees). Tap "Import CSV" above to load attendee records.'
+              : 'No attendees found matching filter.'}
           </div>
         ) : (
           filtered.map((a) => (
@@ -235,8 +269,10 @@ export default function AttendeeDirectory({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'rgba(228, 244, 255, 0.5)' }}>
-                  No attendees found matching current filter criteria.
+                <td colSpan={7} style={{ textAlign: 'center', padding: '42px 16px', color: 'rgba(228, 244, 255, 0.5)' }}>
+                  {attendees.length === 0
+                    ? 'Database registry is currently empty (0 registered attendees). Click "Import CSV" above to load attendee records.'
+                    : 'No attendees found matching current filter criteria.'}
                 </td>
               </tr>
             ) : (

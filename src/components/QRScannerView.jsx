@@ -346,7 +346,7 @@ export default function QRScannerView({
               className="manual-input"
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value)}
-              placeholder="Pass ID (ZY-8507-Q7HQ), USN, or Name..."
+              placeholder="Pass ID (e.g. ZY-XXXX-XXXX), USN, or Name..."
               aria-label="Search or enter Pass ID"
             />
             {navigator.clipboard && (

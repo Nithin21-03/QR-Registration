@@ -32,13 +32,28 @@ export default function App() {
   const [authPasscode, setAuthPasscode] = useState(() => sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026');
   const [isLocked, setIsLocked] = useState(() => !sessionStorage.getItem('zyntra_auth_token'));
 
-  // Data states - Initialize with resilient client fallback cache
-  const [stats, setStats] = useState(() => getClientStats());
+  // Data states - Pure database source of truth
+  const [stats, setStats] = useState(() => ({
+    overview: {
+      totalRegistered: 0,
+      totalCheckedIn: 0,
+      totalPending: 0,
+      attendanceRate: 0,
+      totalFoodClaimed: 0,
+      remainingFood: 0,
+      foodRate: 0,
+    },
+    eventBreakdown: [],
+    collegeBreakdown: [],
+    hourlyVelocity: [],
+    recentScans: [],
+    database: { connected: false, mode: 'Connecting...' },
+  }));
   const [attendees, setAttendees] = useState(() => loadClientAttendees());
   const [health, setHealth] = useState({
-    status: 'READY',
-    database: { connected: false, mode: 'Resilient Cloud Engine' },
-    totalAttendees: loadClientAttendees().length,
+    status: 'CONNECTING',
+    database: { connected: false, mode: 'Supabase Cloud Database' },
+    totalAttendees: 0,
   });
   const [isSeeding, setIsSeeding] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -94,10 +109,9 @@ export default function App() {
       }
       if (aRes && aRes.ok) {
         const data = await aRes.json();
-        if (data.attendees && data.attendees.length > 0) {
-          setAttendees(data.attendees);
-          saveClientAttendees(data.attendees);
-        }
+        const serverAttendees = Array.isArray(data.attendees) ? data.attendees : [];
+        setAttendees(serverAttendees);
+        saveClientAttendees(serverAttendees);
         serverOnline = true;
       }
 
@@ -383,6 +397,71 @@ export default function App() {
     }
   };
 
+  // 6. Import Attendees from CSV into Supabase Database
+  const handleImportCsv = async (file) => {
+    try {
+      showToast('Reading and importing CSV...', 'info');
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length < 2) {
+        showToast('CSV must have a header row and at least one data row', 'error');
+        return;
+      }
+
+      // Parse headers
+      const rawHeaders = lines[0].split(',').map((h) => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+      
+      const findCol = (...names) => rawHeaders.findIndex((h) => names.some((n) => h.includes(n)));
+      const ticketIdx = findCol('ticket', 'pass', 'id');
+      const nameIdx = findCol('name', 'full name', 'student');
+      const collegeIdx = findCol('college', 'institution', 'university');
+      const emailIdx = findCol('email');
+      const phoneIdx = findCol('phone', 'mobile', 'contact');
+      const studentIdIdx = findCol('usn', 'student_id', 'roll');
+      const eventIdx = findCol('event', 'competition');
+
+      const parsedAttendees = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map((c) => c.replace(/^["']|["']$/g, '').trim());
+        const ticket_id = ticketIdx !== -1 ? cols[ticketIdx] : '';
+        const full_name = nameIdx !== -1 ? cols[nameIdx] : '';
+        if (!ticket_id || !full_name) continue;
+
+        parsedAttendees.push({
+          ticket_id,
+          full_name,
+          college: collegeIdx !== -1 ? cols[collegeIdx] : '',
+          email: emailIdx !== -1 ? cols[emailIdx] : '',
+          phone: phoneIdx !== -1 ? cols[phoneIdx] : '',
+          student_id: studentIdIdx !== -1 ? cols[studentIdIdx] : '',
+          event_name: eventIdx !== -1 ? cols[eventIdx] : 'General Pass',
+          status: 'CONFIRMED',
+        });
+      }
+
+      if (parsedAttendees.length === 0) {
+        showToast('No valid attendees found in CSV. Headers must include Ticket ID and Full Name.', 'error');
+        return;
+      }
+
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ attendees: parsedAttendees }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        showToast(`Successfully registered ${data.details?.count || parsedAttendees.length} attendees in Supabase!`, 'success');
+        fetchInitialData();
+      } else {
+        showToast('Server error importing attendees', 'error');
+      }
+    } catch (err) {
+      showToast(`Import error: ${err.message}`, 'error');
+    }
+  };
+
   const recentScans = stats?.recentScans || [];
 
   return (
@@ -520,6 +599,7 @@ export default function App() {
             onUndoScan={handleUndo}
             onViewPass={(attendee) => setViewingPassAttendee(attendee)}
             onExportCsv={handleExportCsv}
+            onImportCsv={handleImportCsv}
             isExporting={isExporting}
           />
         )}
