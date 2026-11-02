@@ -133,7 +133,7 @@ export function sanitizeScanRequest(req, res, next) {
 
     if (ticketInput !== undefined) {
       const str = String(ticketInput).trim();
-      if (str.length < 2 || str.length > 300) {
+      if (str.length < 2 || str.length > 4096) {
         return res.status(400).json({
           success: false,
           error: 'INVALID_PAYLOAD',
