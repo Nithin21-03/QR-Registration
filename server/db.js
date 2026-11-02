@@ -53,15 +53,15 @@ function saveLocalCache() {
 loadLocalCache();
 
 // PostgreSQL Connection Pool for Supabase (using Supavisor IPv4 Pooler for Vercel/Serverless support)
-const defaultDbUrl = 'postgresql://postgres.yjmkprrvjhvpsrnnlugn:Nithin%4021_2@aws-1-eu-west-3.pooler.supabase.com:6543/postgres';
+const defaultDbUrl = 'postgresql://postgres.yjmkprrvjhvpsrnnlugn:Nithin%4021_2@aws-1-eu-west-3.pooler.supabase.com:5432/postgres';
 
 function normalizeDatabaseUrl(raw) {
   let url = (raw || defaultDbUrl).trim();
   // Auto-rewrite direct Supabase IPv6 host (which fails on Vercel serverless with ENOTFOUND) to IPv4 Pooler
   if (url.includes('db.yjmkprrvjhvpsrnnlugn.supabase.co')) {
     url = url
-      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co:5432', 'aws-1-eu-west-3.pooler.supabase.com:6543')
-      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co', 'aws-1-eu-west-3.pooler.supabase.com:6543');
+      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co:5432', 'aws-1-eu-west-3.pooler.supabase.com:5432')
+      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co', 'aws-1-eu-west-3.pooler.supabase.com:5432');
     if (!url.includes('postgres.yjmkprrvjhvpsrnnlugn:')) {
       url = url.replace('postgres:', 'postgres.yjmkprrvjhvpsrnnlugn:');
     }
@@ -72,23 +72,24 @@ function normalizeDatabaseUrl(raw) {
 const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 const useSsl = process.env.DATABASE_SSL !== 'false';
 
-let pool = null;
+let pool = globalThis._zyntraPgPool || null;
 let isConnected = false;
 let dbError = null;
 
-if (databaseUrl) {
+if (!pool && databaseUrl) {
   try {
     pool = new Pool({
       connectionString: databaseUrl,
       ssl: useSsl ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 15000,
-      idleTimeoutMillis: 30000,
-      max: 10,
+      connectionTimeoutMillis: 7000,
+      idleTimeoutMillis: 10000,
+      max: 3,
     });
 
     pool.on('error', (err) => {
-      console.warn('Unexpected idle PostgreSQL client error:', err.message);
+      console.warn('PostgreSQL idle client note:', err.message);
     });
+    globalThis._zyntraPgPool = pool;
   } catch (err) {
     dbError = err.message;
     console.error('Failed to configure PostgreSQL pool:', err);
@@ -100,62 +101,15 @@ if (databaseUrl) {
  */
 export async function initDatabase() {
   if (!pool) return false;
+  if (isConnected && localCache.registrations.length > 0) return true;
 
   try {
     const client = await pool.connect();
     try {
-      // 1. Ensure registrations table exists
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS registrations (
-          id SERIAL PRIMARY KEY,
-          ticket_id VARCHAR(50) UNIQUE NOT NULL,
-          full_name VARCHAR(150) NOT NULL,
-          college VARCHAR(250) NOT NULL,
-          email VARCHAR(150) NOT NULL,
-          phone VARCHAR(20) NOT NULL,
-          student_id VARCHAR(50) NOT NULL,
-          department VARCHAR(100),
-          semester VARCHAR(50),
-          event_id VARCHAR(100) NOT NULL,
-          event_name VARCHAR(200) NOT NULL,
-          team_name VARCHAR(150),
-          team_members JSONB DEFAULT '[]'::jsonb,
-          members_detail JSONB DEFAULT '[]'::jsonb,
-          amount_paid VARCHAR(50) DEFAULT '₹ 500',
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          status VARCHAR(50) DEFAULT 'CONFIRMED'
-        );
-      `);
-
-      // 2. Extend with attendance check-in and food claim fields
-      await client.query(`
-        ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in BOOLEAN DEFAULT FALSE;
-        ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMP WITH TIME ZONE;
-        ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in_by VARCHAR(100);
-        ALTER TABLE registrations ADD COLUMN IF NOT EXISTS food_claimed BOOLEAN DEFAULT FALSE;
-        ALTER TABLE registrations ADD COLUMN IF NOT EXISTS food_claimed_at TIMESTAMP WITH TIME ZONE;
-        ALTER TABLE registrations ADD COLUMN IF NOT EXISTS food_claimed_by VARCHAR(100);
-      `);
-
-      // 3. Create full audit scans table
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS attendance_scans (
-          id SERIAL PRIMARY KEY,
-          ticket_id VARCHAR(50) NOT NULL,
-          scan_type VARCHAR(50) NOT NULL,
-          scanned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          scanner_station VARCHAR(100) DEFAULT 'Gate 1',
-          volunteer_name VARCHAR(100) DEFAULT 'Volunteer',
-          result VARCHAR(50) NOT NULL,
-          details JSONB DEFAULT '{}'::jsonb
-        );
-        CREATE INDEX IF NOT EXISTS idx_scans_ticket ON attendance_scans(ticket_id);
-        CREATE INDEX IF NOT EXISTS idx_scans_type ON attendance_scans(scan_type);
-        CREATE INDEX IF NOT EXISTS idx_scans_time ON attendance_scans(scanned_at DESC);
-      `);
-
+      await client.query('SELECT 1');
       isConnected = true;
-      console.log('✓ Successfully connected to Supabase PostgreSQL & verified tables.');
+      dbError = null;
+      console.log('✓ Successfully connected to Supabase PostgreSQL cluster.');
 
       // Sync local cache with current database state
       await refreshLocalCache(client);
@@ -165,14 +119,11 @@ export async function initDatabase() {
     }
   } catch (err) {
     dbError = err.message;
-    console.warn('Database initialization note (using local cache):', err.message);
+    console.warn('Database initialization note:', err.message);
     return false;
   }
 }
 
-/**
- * Sync local cache with remote DB for fast lookups & offline durability
- */
 async function refreshLocalCache(client) {
   try {
     const { rows } = await client.query('SELECT * FROM registrations ORDER BY id DESC');
