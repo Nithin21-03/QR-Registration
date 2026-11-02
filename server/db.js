@@ -526,6 +526,7 @@ export async function getStats() {
       const { rows } = await pool.query('SELECT * FROM registrations ORDER BY id DESC');
       list = rows;
       localCache.registrations = rows;
+      isConnected = true;
     } catch (err) {
       console.warn('DB getStats note, using local cache:', err.message);
     }
