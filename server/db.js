@@ -52,9 +52,24 @@ function saveLocalCache() {
 
 loadLocalCache();
 
-// PostgreSQL Connection Pool for Supabase
-const defaultDbUrl = 'postgresql://postgres:Nithin%4021_2@db.yjmkprrvjhvpsrnnlugn.supabase.co:5432/postgres';
-const databaseUrl = process.env.DATABASE_URL || defaultDbUrl;
+// PostgreSQL Connection Pool for Supabase (using Supavisor IPv4 Pooler for Vercel/Serverless support)
+const defaultDbUrl = 'postgresql://postgres.yjmkprrvjhvpsrnnlugn:Nithin%4021_2@aws-1-eu-west-3.pooler.supabase.com:6543/postgres';
+
+function normalizeDatabaseUrl(raw) {
+  let url = (raw || defaultDbUrl).trim();
+  // Auto-rewrite direct Supabase IPv6 host (which fails on Vercel serverless with ENOTFOUND) to IPv4 Pooler
+  if (url.includes('db.yjmkprrvjhvpsrnnlugn.supabase.co')) {
+    url = url
+      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co:5432', 'aws-1-eu-west-3.pooler.supabase.com:6543')
+      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co', 'aws-1-eu-west-3.pooler.supabase.com:6543');
+    if (!url.includes('postgres.yjmkprrvjhvpsrnnlugn:')) {
+      url = url.replace('postgres:', 'postgres.yjmkprrvjhvpsrnnlugn:');
+    }
+  }
+  return url;
+}
+
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 const useSsl = process.env.DATABASE_SSL !== 'false';
 
 let pool = null;
