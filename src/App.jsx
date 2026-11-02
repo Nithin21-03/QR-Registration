@@ -87,7 +87,7 @@ export default function App() {
   const fetchInitialData = useCallback(async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
       const headers = getAuthHeaders();
 
       const [hRes, sRes, aRes] = await Promise.all([
@@ -171,7 +171,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
 
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -222,7 +222,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
 
       const res = await fetch('/api/undo-scan', {
         method: 'POST',
@@ -271,7 +271,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
 
       const res = await fetch('/api/scan', {
         method: 'POST',

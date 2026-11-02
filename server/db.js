@@ -52,9 +52,26 @@ function saveLocalCache() {
 
 loadLocalCache();
 
-// PostgreSQL Connection Pool for Supabase
-const defaultDbUrl = 'postgresql://postgres:Nithin%4021_2@db.yjmkprrvjhvpsrnnlugn.supabase.co:5432/postgres';
-const databaseUrl = (process.env.DATABASE_URL || defaultDbUrl).trim();
+// PostgreSQL Connection Pool for Supabase (using Supavisor IPv4 Pooler for Vercel/Serverless support)
+const defaultDbUrl = 'postgresql://postgres.yjmkprrvjhvpsrnnlugn:Nithin%4021_2@aws-1-eu-west-3.pooler.supabase.com:5432/postgres';
+
+function normalizeDatabaseUrl(raw) {
+  let url = (raw || defaultDbUrl).trim();
+  // Direct Supabase host (db.yjmkprrvjhvpsrnnlugn.supabase.co) is IPv6-only (AAAA record only).
+  // AWS Lambda / Vercel serverless functions fail with ENOTFOUND on IPv6-only hosts.
+  // Auto-rewrite to the verified Supavisor IPv4 Pooler endpoint:
+  if (url.includes('db.yjmkprrvjhvpsrnnlugn.supabase.co')) {
+    url = url
+      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co:5432', 'aws-1-eu-west-3.pooler.supabase.com:5432')
+      .replace('db.yjmkprrvjhvpsrnnlugn.supabase.co', 'aws-1-eu-west-3.pooler.supabase.com:5432');
+    if (!url.includes('postgres.yjmkprrvjhvpsrnnlugn:')) {
+      url = url.replace('postgres:', 'postgres.yjmkprrvjhvpsrnnlugn:');
+    }
+  }
+  return url;
+}
+
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 const useSsl = process.env.DATABASE_SSL !== 'false';
 
 let pool = globalThis._zyntraPgPool || null;
@@ -66,9 +83,10 @@ if (!pool && databaseUrl) {
     pool = new Pool({
       connectionString: databaseUrl,
       ssl: useSsl ? { rejectUnauthorized: false } : false,
-      connectionTimeoutMillis: 7000,
-      idleTimeoutMillis: 10000,
-      max: 5,
+      connectionTimeoutMillis: 15000,
+      idleTimeoutMillis: 30000,
+      max: 4,
+      keepAlive: true,
     });
 
     pool.on('error', (err) => {
@@ -103,6 +121,7 @@ export async function initDatabase() {
       client.release();
     }
   } catch (err) {
+    isConnected = false;
     dbError = err.message;
     console.warn('Database initialization note:', err.message);
     return false;
@@ -478,7 +497,10 @@ export async function getStats() {
       list = rows;
       localCache.registrations = rows;
       isConnected = true;
+      dbError = null;
     } catch (err) {
+      isConnected = false;
+      dbError = err.message;
       console.warn('DB getStats note, using local cache:', err.message);
     }
   }

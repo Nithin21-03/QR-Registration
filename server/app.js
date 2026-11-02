@@ -47,15 +47,20 @@ let dbReady = false;
 let dbInitPromise = null;
 
 function ensureDbReady() {
+  if (dbReady) return Promise.resolve(true);
   if (!dbInitPromise) {
     dbInitPromise = initDatabase()
       .then((ready) => {
         dbReady = ready;
+        if (!ready) {
+          dbInitPromise = null;
+        }
         console.log(`[DB] Engine initialized: ${ready ? 'Supabase Cloud PostgreSQL' : 'Resilient In-Memory Storage'}`);
         return ready;
       })
       .catch((err) => {
         console.warn('[DB] Startup notice:', err.message);
+        dbInitPromise = null;
         return false;
       });
   }
