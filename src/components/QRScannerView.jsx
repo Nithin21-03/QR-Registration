@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Camera,
@@ -18,6 +18,7 @@ export default function QRScannerView({
   station,
   volunteer,
   onScanResult,
+  isLocked = false,
 }) {
   const [scannerActive, setScannerActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -32,46 +33,7 @@ export default function QRScannerView({
   const fileInputRef = useRef(null);
   const isFoodMode = scanMode === 'FOOD_COLLECTION';
 
-  // 1. Initialize Cameras & Start Mobile Viewport
-  useEffect(() => {
-    let isMounted = true;
-
-    async function setupCameras() {
-      try {
-        const devices = await Html5Qrcode.getCameras();
-        if (!isMounted) return;
-
-        if (devices && devices.length > 0) {
-          setCameras(devices);
-          // Prefer environment / rear camera on mobile
-          const backCam = devices.find((d) => {
-            const l = d.label.toLowerCase();
-            return l.includes('back') || l.includes('environment') || l.includes('rear');
-          });
-          const initialId = backCam ? backCam.id : devices[0].id;
-          setSelectedCameraId(initialId);
-          startCamera(initialId);
-        } else {
-          // If camera enumeration is restricted, try starting with facingMode
-          startCamera(null);
-        }
-      } catch (err) {
-        console.warn('Camera setup note, trying direct environment camera:', err.message);
-        if (isMounted) {
-          startCamera(null);
-        }
-      }
-    }
-
-    setupCameras();
-
-    return () => {
-      isMounted = false;
-      stopCamera();
-    };
-  }, []);
-
-  // 2. Start Scanner with Hardware BarcodeDetector & Full-Frame Decoding
+  // 1. Start Scanner with Hardware BarcodeDetector & Full-Frame Decoding
   const startCamera = async (cameraId) => {
     try {
       setCameraError('');
@@ -134,10 +96,56 @@ export default function QRScannerView({
       console.warn('Camera start error:', err);
       setScannerActive(false);
       setCameraError(
-        'Camera permission required. Please allow camera access in browser settings or type the Pass ID below.'
+        'Camera permission required. Tap "Open Camera" below or enter the Pass ID.'
       );
     }
   };
+
+  // 2. Setup Cameras & Detect Available Sensors
+  const setupCameras = useCallback(async () => {
+    try {
+      setCameraError('');
+      const devices = await Html5Qrcode.getCameras().catch(() => []);
+
+      if (devices && devices.length > 0) {
+        setCameras(devices);
+        // Prefer environment / rear camera on mobile
+        const backCam = devices.find((d) => {
+          const l = d.label.toLowerCase();
+          return l.includes('back') || l.includes('environment') || l.includes('rear');
+        });
+        const initialId = backCam ? backCam.id : devices[0].id;
+        setSelectedCameraId(initialId);
+        await startCamera(initialId);
+      } else {
+        // If camera enumeration is restricted, try starting with facingMode
+        await startCamera(null);
+      }
+    } catch (err) {
+      console.warn('Camera setup note, trying direct environment camera:', err.message);
+      await startCamera(null);
+    }
+  }, []);
+
+  // 3. Initialize Camera when terminal is unlocked (after authentication)
+  useEffect(() => {
+    if (isLocked) {
+      stopCamera();
+      return;
+    }
+
+    let isMounted = true;
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      setupCameras();
+    }, 150);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+      stopCamera();
+    };
+  }, [isLocked, scanMode, setupCameras]);
 
   // 3. Stop Scanner
   const stopCamera = async () => {
@@ -320,16 +328,17 @@ export default function QRScannerView({
               {cameraError || 'Initializing Camera Feed...'}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'rgba(228, 244, 255, 0.6)', lineHeight: 1.4 }}>
-              If camera access is blocked, tap <strong>Upload Photo</strong> above or type the <strong>Pass ID</strong> below.
+              If camera access is blocked, tap <strong>Open Camera</strong> below or enter the <strong>Pass ID</strong>.
             </div>
-            {cameras.length > 0 && !scannerActive && (
+            {!scannerActive && (
               <button
                 type="button"
                 className="btn-primary"
-                style={{ marginTop: '4px' }}
-                onClick={() => startCamera(selectedCameraId || cameras[0].id)}
+                style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => setupCameras()}
               >
-                Retry Camera
+                <Camera size={16} />
+                <span>Open Camera</span>
               </button>
             )}
           </div>

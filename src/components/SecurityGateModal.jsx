@@ -10,26 +10,58 @@ export default function SecurityGateModal({ onAuthenticated, isLocked, onCancel 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!passcode.trim()) return;
+    const clean = passcode.trim();
+    if (!clean) return;
 
     setLoading(true);
     setErrorMsg('');
     sound.playClick();
 
+    // Instant unlock for authorized festival passcode (case-insensitive, handles mobile keyboard capitalization)
+    if (clean.toLowerCase() === 'zyntra2026') {
+      sound.playSuccess();
+      const clientToken = 'zyntra_client_' + btoa('zyntra2026_' + Date.now());
+      localStorage.setItem('zyntra_auth_token', clientToken);
+      localStorage.setItem('zyntra_auth_passcode', clean);
+      sessionStorage.setItem('zyntra_auth_token', clientToken);
+      sessionStorage.setItem('zyntra_auth_passcode', clean);
+
+      // Immediately unlock terminal and trigger camera
+      onAuthenticated(clientToken, clean);
+
+      // Upgrade to server-signed cryptographic token in background
+      fetch('/api/auth/verify-passcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: clean }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.authenticated && data?.token) {
+            localStorage.setItem('zyntra_auth_token', data.token);
+            sessionStorage.setItem('zyntra_auth_token', data.token);
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
     try {
       const res = await fetch('/api/auth/verify-passcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passcode: passcode.trim() }),
+        body: JSON.stringify({ passcode: clean }),
       });
 
       const data = await res.json().catch(() => null);
 
       if (res.ok && data?.authenticated) {
         sound.playSuccess();
+        localStorage.setItem('zyntra_auth_token', data.token);
+        localStorage.setItem('zyntra_auth_passcode', clean);
         sessionStorage.setItem('zyntra_auth_token', data.token);
-        sessionStorage.setItem('zyntra_auth_passcode', passcode.trim());
-        onAuthenticated(data.token, passcode.trim());
+        sessionStorage.setItem('zyntra_auth_passcode', clean);
+        onAuthenticated(data.token, clean);
         return;
       }
 
@@ -39,25 +71,11 @@ export default function SecurityGateModal({ onAuthenticated, isLocked, onCancel 
         return;
       }
 
-      // Check for invalid passcode from server
-      if (res.status === 401 || (data && !data.success)) {
-        sound.playError();
-        setErrorMsg(data?.message || 'Invalid passcode. Please enter the authorized volunteer passcode.');
-        return;
-      }
+      sound.playError();
+      setErrorMsg(data?.message || 'Incorrect volunteer passcode. Please enter "zyntra2026".');
     } catch (_) {
-      // In case server is offline or network is isolated, support local validation fallback
-      if (passcode.trim() === 'zyntra2026') {
-        sound.playSuccess();
-        const fallbackToken = 'offline_' + btoa('zyntra2026_' + Date.now());
-        sessionStorage.setItem('zyntra_auth_token', fallbackToken);
-        sessionStorage.setItem('zyntra_auth_passcode', passcode.trim());
-        onAuthenticated(fallbackToken, passcode.trim());
-        return;
-      } else {
-        sound.playError();
-        setErrorMsg('Invalid volunteer passcode.');
-      }
+      sound.playError();
+      setErrorMsg('Incorrect volunteer passcode. Please enter "zyntra2026".');
     } finally {
       setLoading(false);
     }
@@ -112,8 +130,11 @@ export default function SecurityGateModal({ onAuthenticated, isLocked, onCancel 
               type={showPasscode ? 'text' : 'password'}
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter Access Passcode"
+              placeholder="Enter Access Passcode (zyntra2026)"
               autoFocus
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
               style={{
                 width: '100%',
                 padding: '13px 44px 13px 42px',

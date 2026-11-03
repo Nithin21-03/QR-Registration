@@ -28,9 +28,13 @@ export default function App() {
   });
 
   // Security & Authentication Gatekeeper
-  const [authToken, setAuthToken] = useState(() => sessionStorage.getItem('zyntra_auth_token'));
-  const [authPasscode, setAuthPasscode] = useState(() => sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026');
-  const [isLocked, setIsLocked] = useState(() => !sessionStorage.getItem('zyntra_auth_token'));
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('zyntra_auth_token') || sessionStorage.getItem('zyntra_auth_token'));
+  const [authPasscode, setAuthPasscode] = useState(() => localStorage.getItem('zyntra_auth_passcode') || sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026');
+  const [isLocked, setIsLocked] = useState(() => {
+    const savedToken = localStorage.getItem('zyntra_auth_token') || sessionStorage.getItem('zyntra_auth_token');
+    const savedCode = localStorage.getItem('zyntra_auth_passcode') || sessionStorage.getItem('zyntra_auth_passcode');
+    return !(savedToken || (savedCode && savedCode.toLowerCase() === 'zyntra2026'));
+  });
 
   // Data states - Pure database source of truth
   const [stats, setStats] = useState(() => ({
@@ -76,8 +80,8 @@ export default function App() {
   // Auth Header Builder
   const getAuthHeaders = useCallback(() => {
     const headers = { 'Content-Type': 'application/json' };
-    const token = authToken || sessionStorage.getItem('zyntra_auth_token');
-    const code = authPasscode || sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026';
+    const token = authToken || localStorage.getItem('zyntra_auth_token') || sessionStorage.getItem('zyntra_auth_token');
+    const code = authPasscode || localStorage.getItem('zyntra_auth_passcode') || sessionStorage.getItem('zyntra_auth_passcode') || 'zyntra2026';
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (code) headers['X-Scanner-Passcode'] = code;
     return headers;
@@ -474,7 +478,10 @@ export default function App() {
         setVolunteer={setVolunteer}
         health={health}
         onLockTerminal={() => {
+          localStorage.removeItem('zyntra_auth_token');
+          localStorage.removeItem('zyntra_auth_passcode');
           sessionStorage.removeItem('zyntra_auth_token');
+          sessionStorage.removeItem('zyntra_auth_passcode');
           setAuthToken(null);
           setIsLocked(true);
           showToast('Scanner terminal locked.', 'info');
@@ -499,6 +506,7 @@ export default function App() {
               station={station}
               volunteer={volunteer}
               onScanResult={handleScan}
+              isLocked={isLocked}
             />
 
             {/* Right: Live Scan Feed */}
@@ -630,6 +638,10 @@ export default function App() {
             setAuthToken(token);
             setAuthPasscode(code);
             setIsLocked(false);
+            localStorage.setItem('zyntra_auth_token', token);
+            localStorage.setItem('zyntra_auth_passcode', code);
+            sessionStorage.setItem('zyntra_auth_token', token);
+            sessionStorage.setItem('zyntra_auth_passcode', code);
             showToast('Security clearance verified. Scanner terminal active.', 'success');
             fetchInitialData();
           }}
